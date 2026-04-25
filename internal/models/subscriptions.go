@@ -3,9 +3,9 @@ package models
 
 type Subscription struct {
 	ID          int    `json:"id"`
-	ServiceName string `json:"serviceName"`
+	ServiceName string `json:"service_name"`
 	Price       int    `json:"price"`
-	UserID      string `json:"userID"`
-	StartDate   string `json:"startDate"`
-	EndDate     string `json:"endDate"`
+	UserID      string `json:"user_id"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
 }

@@ -2,13 +2,18 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/database"
+	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/handlers"
 	"github.com/joho/godotenv"
+	"github.com/Evgeny-08-01/Rest-user-aggregator/pkg/logger"
 )
 
 func main() {
+	// 1. Загружаем .env файл
+	  logger.Init("app.log")
 	// 1. Загружаем .env файл
 	err := godotenv.Load()
 	if err != nil {
@@ -29,29 +34,53 @@ func main() {
 	
 	// Откладываем закрытие БД до завершения программы
 	defer database.Close()
-
+ if len(os.Args) > 1 && os.Args[1] == "-down" {
+        downSQL, err2 := os.ReadFile("migrations/000001_create_subscriptions_table.down.sql")
+        if err2 != nil {
+            log.Fatal("Failed to read down migration:", err2)
+        }
+        _, err = database.DB.Exec(string(downSQL))
+        if err != nil {
+            log.Fatal("Failed to rollback migration:", err)
+        }
+        log.Println("Migration rolled back")
+        return
+    }
 	// 4. Запускаем миграции
-	err = runMigrations(databasePath)
+	err = runMigrations()
 	if err != nil {
 		log.Println("Migrations error:", err)
 	}
+	// 5. Роутер (switch для URL)
+	mux := http.NewServeMux()
 
-	// 5. Получаем порт из .env
+	// 6. CRUDL операции
+	mux.HandleFunc("POST /api/subscriptions", handlers.CreateSubscriptionHandler)
+	mux.HandleFunc("GET /api/subscriptions/{id}", handlers.GetSubscriptionHandler)
+	mux.HandleFunc("PUT /api/subscriptions/{id}", handlers.UpdateSubscriptionHandler)
+	mux.HandleFunc("DELETE /api/subscriptions/{id}", handlers.DeleteSubscriptionHandler)
+	mux.HandleFunc("GET /api/subscriptions", handlers.ListSubscriptionsHandler)
+	mux.HandleFunc("GET /api/subscriptions/total-cost", handlers.GetTotalCostHandler)
+
+	// 7. Получаем порт из .env
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
 	}
-
-	// 6. Запускаем сервер
-	log.Println("Server starting on port:", port)
+	// 8. Запускаем сервер
+   log.Printf("Server starting on port %s", port)
 	//  запуск HTTP сервера
-	// err = http.ListenAndServe(":"+port, nil)
-	// if err != nil {
-	//     log.Fatal("Server failed:", err)
-	// }
+	err = http.ListenAndServe(":"+port, mux)
+	if err != nil {
+	  log.Fatal("Server failed:", err)
+	}
 }
 
-// Временно пропускаем миграции
-func runMigrations(databasePath string) error {
-	return nil
+func runMigrations() error {
+    migrationSQL, err := os.ReadFile("migrations/000001_create_subscriptions_table.up.sql")
+    if err != nil {
+        return err
+    }
+    _, err = database.DB.Exec(string(migrationSQL))
+    return err
 }
