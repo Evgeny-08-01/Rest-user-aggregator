@@ -7,13 +7,19 @@ import (
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/handlers"
-	"github.com/joho/godotenv"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/pkg/logger"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+	"github.com/swaggo/http-swagger"
 )
 
+// @title Subscription API
+// @version 1.16.4
+// @host localhost:8080
+// @BasePath /api
 func main() {
 	// 1. Загружаем .env файл
-	  logger.Init("app.log")
+	logger.Init("app.log")
 	// 1. Загружаем .env файл
 	err := godotenv.Load()
 	if err != nil {
@@ -27,25 +33,25 @@ func main() {
 	}
 
 	// 3. Подключаемся к БД
-	err = database.Init(databasePath)  // Подключение к БД
+	err = database.Init(databasePath) // Подключение к БД
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	
+
 	// Откладываем закрытие БД до завершения программы
 	defer database.Close()
- if len(os.Args) > 1 && os.Args[1] == "-down" {
-        downSQL, err2 := os.ReadFile("migrations/000001_create_subscriptions_table.down.sql")
-        if err2 != nil {
-            log.Fatal("Failed to read down migration:", err2)
-        }
-        _, err = database.DB.Exec(string(downSQL))
-        if err != nil {
-            log.Fatal("Failed to rollback migration:", err)
-        }
-        log.Println("Migration rolled back")
-        return
-    }
+	if len(os.Args) > 1 && os.Args[1] == "-down" {
+		downSQL, err2 := os.ReadFile("migrations/000001_create_subscriptions_table.down.sql")
+		if err2 != nil {
+			log.Fatal("Failed to read down migration:", err2)
+		}
+		_, err = database.DB.Exec(string(downSQL))
+		if err != nil {
+			log.Fatal("Failed to rollback migration:", err)
+		}
+		log.Println("Migration rolled back")
+		return
+	}
 	// 4. Запускаем миграции
 	err = runMigrations()
 	if err != nil {
@@ -61,26 +67,26 @@ func main() {
 	mux.HandleFunc("DELETE /api/subscriptions/{id}", handlers.DeleteSubscriptionHandler)
 	mux.HandleFunc("GET /api/subscriptions", handlers.ListSubscriptionsHandler)
 	mux.HandleFunc("GET /api/subscriptions/total-cost", handlers.GetTotalCostHandler)
-
+	mux.HandleFunc("GET /swagger/", httpSwagger.WrapHandler)
 	// 7. Получаем порт из .env
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
 	}
 	// 8. Запускаем сервер
-   log.Printf("Server starting on port %s", port)
+	log.Printf("Server starting on port %s", port)
 	//  запуск HTTP сервера
 	err = http.ListenAndServe(":"+port, mux)
 	if err != nil {
-	  log.Fatal("Server failed:", err)
+		log.Fatal("Server failed:", err)
 	}
 }
 
 func runMigrations() error {
-    migrationSQL, err := os.ReadFile("migrations/000001_create_subscriptions_table.up.sql")
-    if err != nil {
-        return err
-    }
-    _, err = database.DB.Exec(string(migrationSQL))
-    return err
+	migrationSQL, err := os.ReadFile("migrations/000001_create_subscriptions_table.up.sql")
+	if err != nil {
+		return err
+	}
+	_, err = database.DB.Exec(string(migrationSQL))
+	return err
 }
