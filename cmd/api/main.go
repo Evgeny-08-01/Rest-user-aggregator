@@ -11,11 +11,12 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/swaggo/http-swagger"
+	_ "github.com/Evgeny-08-01/Rest-user-aggregator/docs"
 )
 
 // @title Subscription API
-// @version 1.16.4
-// @host localhost:8080
+// @version 1.0
+// @SERVER_PORT=8080
 // @BasePath /api
 func main() {
 	// 1. Загружаем .env файл
