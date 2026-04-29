@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
+	"github.com/google/uuid"
 )
 
 // parseJSON читает и декодирует JSON из тела запроса
@@ -60,12 +61,16 @@ func validateSubscription(req models.Subscription) error {
 	if req.ServiceName == "" {
 		return fmt.Errorf("service_name is required")
 	}
-	if req.Price <= 0 {
-		return fmt.Errorf("price must be greater than 0")
+	if req.Price < 0 {
+		return fmt.Errorf("price cant be negative value")
 	}
 	if req.UserID == "" {
 		return fmt.Errorf("user_id is required")
 	}
+	 _,err := uuid.Parse(req.UserID)
+	 if err != nil {
+	return fmt.Errorf("user_id: not valid-UUID") 
+	}	
 	if !isValidDate(req.StartDate) {
 		return fmt.Errorf("start_date must be in format MM-YYYY")
 	}

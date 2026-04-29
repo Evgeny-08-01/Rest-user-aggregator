@@ -21,18 +21,17 @@ import (
 func main() {
 	// 1. Загружаем .env файл
 	logger.Init("app.log")
-	// 1. Загружаем .env файл
-	err := godotenv.Load()
+	err := godotenv.Load("./.env")
 	if err != nil {
 		log.Println(".env file not found")
 	}
 
 	// 2. Получаем путь к БД ИЗ .env
-	databasePath := os.Getenv("DB_PATH")
-	if databasePath == "" {
-		databasePath = "./subscriptions.db"
-	}
-
+databasePath := os.Getenv("DB_PATH")
+if databasePath == "" {
+    // Для Docker Compose (сервер и БД в разных контейнерах)
+    databasePath = "postgres://postgres:mysecret@db:5432/subscriptions?sslmode=disable"
+}
 	// 3. Подключаемся к БД
 	err = database.Init(databasePath) // Подключение к БД
 	if err != nil {
@@ -41,6 +40,7 @@ func main() {
 
 	// Откладываем закрытие БД до завершения программы
 	defer database.Close()
+	// 4. Проверяем на наличие миграций
 	if len(os.Args) > 1 && os.Args[1] == "-down" {
 		downSQL, err2 := os.ReadFile("migrations/000001_create_subscriptions_table.down.sql")
 		if err2 != nil {
@@ -53,15 +53,15 @@ func main() {
 		log.Println("Migration rolled back")
 		return
 	}
-	// 4. Запускаем миграции
+	// 5. Запускаем миграции
 	err = runMigrations()
 	if err != nil {
 		log.Println("Migrations error:", err)
 	}
-	// 5. Роутер (switch для URL)
+	// 6. Роутер (switch для URL)
 	mux := http.NewServeMux()
 
-	// 6. CRUDL операции
+	// 7. CRUDL операции
 	mux.HandleFunc("POST /api/subscriptions", handlers.CreateSubscriptionHandler)
 	mux.HandleFunc("GET /api/subscriptions/{id}", handlers.GetSubscriptionHandler)
 	mux.HandleFunc("PUT /api/subscriptions/{id}", handlers.UpdateSubscriptionHandler)
@@ -69,12 +69,12 @@ func main() {
 	mux.HandleFunc("GET /api/subscriptions", handlers.ListSubscriptionsHandler)
 	mux.HandleFunc("GET /api/subscriptions/total-cost", handlers.GetTotalCostHandler)
 	mux.HandleFunc("GET /swagger/", httpSwagger.WrapHandler)
-	// 7. Получаем порт из .env
+	// 8. Получаем порт из .env
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
 	}
-	// 8. Запускаем сервер
+	// 9. Запускаем сервер
 	log.Printf("Server starting on port %s", port)
 	//  запуск HTTP сервера
 	err = http.ListenAndServe(":"+port, mux)

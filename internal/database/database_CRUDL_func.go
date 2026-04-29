@@ -48,24 +48,42 @@ func GetSubscriptionByID(id int) (*models.Subscription, error) {
 
 // UpdateSubscription : 3 ФУНКЦИЯ== - обновление подписки*********************** Update
 func UpdateSubscription(sub models.Subscription) error {
-	startDateDB := convertToDatabase(sub.StartDate)
-	endDateDB := ""
-	if sub.EndDate != "" {
-		endDateDB = convertToDatabase(sub.EndDate)
-	}
-	query := `UPDATE subscriptions SET service_name = $1, price = $2, user_id = $3,
+    startDateDB := convertToDatabase(sub.StartDate)
+    endDateDB := ""
+    if sub.EndDate != "" {
+        endDateDB = convertToDatabase(sub.EndDate)
+    }
+    query := `UPDATE subscriptions SET service_name = $1, price = $2, user_id = $3,
               start_date = $4, end_date = $5 WHERE id = $6`
-	_, err := DB.Exec(query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
-	return err
+    result, err := DB.Exec(query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
+    if err != nil {
+        return err
+    }
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        return err
+    }
+    if rowsAffected == 0 {
+        return sql.ErrNoRows
+    }
+    return nil
 }
-
 // DeleteSubscription : 4 ФУНКЦИЯ== -  удаляет подписку по ID     *************** Delete
 func DeleteSubscription(id int) error {
-	query := `DELETE FROM subscriptions WHERE id = $1`
-	_, err := DB.Exec(query, id)
-	return err
+    query := `DELETE FROM subscriptions WHERE id = $1`
+    result, err := DB.Exec(query, id)
+    if err != nil {
+        return err
+    }
+    exist, err := result.RowsAffected()
+    if err != nil {
+        return err
+    }
+    if exist == 0 {
+        return sql.ErrNoRows
+    }
+    return nil
 }
-
 // ListSubscriptions : 5 ФУНКЦИЯ== - получение списка подписок,
 // отсортированный по user_id + по id, с пагинацией(limit, offset)  *************** List
 // ListSubscriptions - возвращает список подписок с пагинацией, отсортированный по user_id и id

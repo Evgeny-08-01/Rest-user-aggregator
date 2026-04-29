@@ -2,11 +2,13 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
 	"strconv"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
+	"github.com/google/uuid"
 )
 
 // @Summary      Создать подписку
@@ -30,10 +32,11 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Валидация
-	if err = validateSubscription(req); err != nil {
+	err = validateSubscription(req)
+	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "Validation error")
 		return
-	}
+	}	
 
 	// 3. Вызвать функцию database.CreateSubscription
 	id, err := database.CreateSubscription(req)
@@ -41,6 +44,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "Database error")
 		return
 	}
+	// 4. Ответ	
 	writeJSON(w, http.StatusCreated, map[string]int{"id": id})
 }
 
@@ -73,6 +77,7 @@ func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, "Subscription not found")
 		return
 	}
+	// 3. Ответ	
 	writeJSON(w, http.StatusOK, sub)
 }
 // @Summary     Хэндлер обновления одной строки
@@ -88,7 +93,7 @@ func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 // 3. UpdateSubscriptionHandler-Хэндлер обновления одной строки
 func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	var req models.Subscription
-	// 1. Получить id
+	// 1. Получить id из url
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -111,10 +116,15 @@ func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// 4.  Вызвать database.UpdateSubscription
 	err = database.UpdateSubscription(req)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "Database error")
-		return
-	}
+if err != nil {
+    if err == sql.ErrNoRows {
+        writeJSONError(w, http.StatusNotFound, "Subscription not found")
+    } else {
+        writeJSONError(w, http.StatusInternalServerError, "Database error")
+    }
+    return
+}
+	// 5. Ответ
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -137,13 +147,18 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Вызвать database.DeleteSubscription
+	// 2. Вызвать database.DeleteSubscription
 
 	err = database.DeleteSubscription(id)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "Database error")
-		return
-	}
+if err != nil {
+    if err == sql.ErrNoRows {
+        writeJSONError(w, http.StatusNotFound, "Subscription not found")
+    } else {
+        writeJSONError(w, http.StatusInternalServerError, "Database error")
+    }
+    return
+}
+		// 3. Ответ
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -159,7 +174,8 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 // @Router        /subscriptions [get]
 // 5. ListSubscriptionsHandler-Хэндлер чтения всех строк по фильтру
 func ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
-	// 1. Получить параметры limit и offset из URL(если их нет,то предустановка в программе)
+	// 1. Валидация
+	// Получить параметры limit и offset из URL(если их нет,то предустановка в программе)
 	limit := 20
 	offset := 0
 	limitStr := r.URL.Query().Get("limit")
@@ -185,7 +201,6 @@ if offsetStr != "" {
         return
     }
     offset = parsed
-
 	}
 	// 2. Вызвать database.ListSubscriptions
 	list, err := database.ListSubscriptions(limit, offset)
@@ -193,11 +208,11 @@ if offsetStr != "" {
 		writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
 		return
 	}
+	// 3. Ответ	
 	writeJSON(w, http.StatusOK, list)
 }
 
-// @Summary      Хэндлер для подсчета суммарной стоимости всех подписок за
-//  выбранный период с фильтрацией по id пользователя и названию подписки
+// @Summary      Хэндлер для подсчета суммарной стоимости всех подписок за выбранный период
 // @Tags        subscriptions
 // @Accept      json
 // @Produce     json
@@ -211,16 +226,24 @@ if offsetStr != "" {
 //  6. GetTotalCostHandler-Хэндлер для подсчета суммарной стоимости всех подписок за
 //     выбранный период с фильтрацией по id пользователя и названию подписки
 func GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
-	// Получаем параметры из URL (не парсим JSON)
+	// 1. Получаем параметры из URL (не парсим JSON)
 	userID := r.URL.Query().Get("user_id")
 	serviceName := r.URL.Query().Get("service_name")
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
-	//  Вызвать database.GetTotalCost
+// 2. Валидация
+    _, err := uuid.Parse(userID)
+	if err != nil {
+        writeJSONError(w, http.StatusBadRequest, "user_id must always be a valid UUID")
+        return
+    }
+
+	//  3. Вызвать database.GetTotalCost
 	total, err := database.GetTotalCost(userID, serviceName, startDate, endDate)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
 		return
 	}
+	// 3. Ответ
 	writeJSON(w, http.StatusOK, map[string]int{"total": total})
 }
