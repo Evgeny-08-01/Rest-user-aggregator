@@ -5,7 +5,7 @@ REST API сервис для агрегации данных онлайн под
 ## Стек технологий
 
 - Версия Go: 1.25
-- Версия PostgreSQL: 15
+- Версия PostgreSQL: 15-alpine
 - Docker / Docker Compose
 - Swagger 
 
