@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
 )
@@ -14,12 +15,18 @@ import (
 func CreateSubscription(sub models.Subscription) (int, error) {
 	var id int
 	query := `INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date) VALUES ($1,$2,$3,$4,$5) RETURNING id`
-	startDate := convertToDatabase(sub.StartDate)
-	endDate := ""
-	if sub.EndDate != "" {
-		endDate = convertToDatabase(sub.EndDate)
-	}
-	err := DB.QueryRow(query, sub.ServiceName, sub.Price, sub.UserID, startDate, endDate).Scan(&id)
+	startDate, err := time.Parse("01-2006", sub.StartDate)
+	 if err != nil {
+		return 0, err
+		}
+	var  endDate *time.Time
+		if sub.EndDate != "" {
+	 tempVar, err := time.Parse("01-2006", sub.EndDate)
+	 if err != nil {
+		return 0, err
+		} 
+		endDate = &tempVar}
+	err = DB.QueryRow(query, sub.ServiceName, sub.Price, sub.UserID, startDate, endDate).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -31,7 +38,7 @@ func GetSubscriptionByID(id int) (*models.Subscription, error) {
 	query := `SELECT id, service_name, price, user_id, start_date, end_date  FROM subscriptions WHERE id = $1`
 	row := DB.QueryRow(query, id)
 	var sub models.Subscription
-	var startDateDB, endDateDB string
+	var startDateDB, endDateDB time.Time
 	err := row.Scan(&sub.ID, &sub.ServiceName, &sub.Price, &sub.UserID, &startDateDB, &endDateDB)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -39,20 +46,27 @@ func GetSubscriptionByID(id int) (*models.Subscription, error) {
 		}
 		return nil, err
 	}
-	sub.StartDate = convertFromDatabase(startDateDB)
-	if endDateDB != "" {
-		sub.EndDate = convertFromDatabase(endDateDB)
-	}
+sub.StartDate = startDateDB.Format("01-2006")
+if !endDateDB.IsZero() {
+    sub.EndDate = endDateDB.Format("01-2006")
+}
 	return &sub, nil
 }
 
+
 // UpdateSubscription : 3 ФУНКЦИЯ== - обновление подписки*********************** Update
 func UpdateSubscription(sub models.Subscription) error {
-    startDateDB := convertToDatabase(sub.StartDate)
-    endDateDB := ""
-    if sub.EndDate != "" {
-        endDateDB = convertToDatabase(sub.EndDate)
-    }
+  startDateDB, err := time.Parse("01-2006", sub.StartDate)
+	 if err != nil {
+		return err
+		}
+	var  endDateDB *time.Time
+		if sub.EndDate != "" {
+	 tempVar, err := time.Parse("01-2006", sub.EndDate)
+	 if err != nil {
+		return err
+		} 
+		endDateDB = &tempVar}
     query := `UPDATE subscriptions SET service_name = $1, price = $2, user_id = $3,
               start_date = $4, end_date = $5 WHERE id = $6`
     result, err := DB.Exec(query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
@@ -100,24 +114,42 @@ func ListSubscriptions(limit, offset int) ([]models.Subscription, error) {
 	defer rows.Close()
 
 	var subscriptions []models.Subscription
+	var startDate, endDate time.Time
 	for rows.Next() {
 		var sub models.Subscription
-		err := rows.Scan(&sub.ID, &sub.ServiceName, &sub.Price, &sub.UserID, &sub.StartDate, &sub.EndDate)
+		err := rows.Scan(&sub.ID, &sub.ServiceName, &sub.Price, &sub.UserID, &startDate, &endDate)
 		if err != nil {
 			return nil, err
 		}
-		sub.StartDate = convertFromDatabase(sub.StartDate)
-		if sub.EndDate != "" {
-			sub.EndDate = convertFromDatabase(sub.EndDate)
-		}
+
+sub.StartDate = startDate.Format("01-2006")
+if !endDate.IsZero() {
+    sub.EndDate = endDate.Format("01-2006")
+}
 		subscriptions = append(subscriptions, sub)
 	}
-
 	return subscriptions, nil
 }
 
 // GetTotalCost - возвращает суммарную стоимость подписок за период с фильтрацией
 func GetTotalCost(userID, serviceName, startDate, endDate string) (int, error) {
+// 	query := `SELECT id, service_name, price, user_id, start_date, end_date 
+//              FROM subscriptions 
+ //             ORDER BY user_id, id
+//              LIMIT $1 OFFSET $2`
+
+startDateDB, err := time.Parse("01-2006", startDate)
+	 if err != nil {
+		return 0, err
+		}
+	var  endDateDB *time.Time
+		if endDate!="" {
+			 tempVar, err := time.Parse("01-2006", endDate)
+	 if err != nil {
+		return 0, err
+		} 
+		endDateDB = &tempVar
+	}
 	query := `SELECT COALESCE(SUM(price), 0) FROM subscriptions WHERE 1=1`
 	var args []any
 	x := 1

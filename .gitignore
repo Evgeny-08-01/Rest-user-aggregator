@@ -9,8 +9,7 @@
 
 # Go workspace
 *.test
-*.mod
-*.sum
+
 /vendor
 
 # IDE

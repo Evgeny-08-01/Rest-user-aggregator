@@ -38,13 +38,13 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}	
 
-	// 3. Вызвать функцию database.CreateSubscription
+	// 3. Вызвать функцию database.CreateSubscription-создаем запись в базе данных
 	id, err := database.CreateSubscription(req)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Database error")
 		return
 	}
-	// 4. Ответ	
+	// 4. Ответ-передаем id созданной записи в базе данных в виде JSON в теле ответа хэндлера 
 	writeJSON(w, http.StatusCreated, map[string]int{"id": id})
 }
 
