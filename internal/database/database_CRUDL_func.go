@@ -4,7 +4,8 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"strings"
+
+	"strconv"
 	"time"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
@@ -38,7 +39,8 @@ func GetSubscriptionByID(id int) (*models.Subscription, error) {
 	query := `SELECT id, service_name, price, user_id, start_date, end_date  FROM subscriptions WHERE id = $1`
 	row := DB.QueryRow(query, id)
 	var sub models.Subscription
-	var startDateDB, endDateDB time.Time
+	var startDateDB time.Time
+	var endDateDB sql.NullTime
 	err := row.Scan(&sub.ID, &sub.ServiceName, &sub.Price, &sub.UserID, &startDateDB, &endDateDB)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -47,8 +49,8 @@ func GetSubscriptionByID(id int) (*models.Subscription, error) {
 		return nil, err
 	}
 sub.StartDate = startDateDB.Format("01-2006")
-if !endDateDB.IsZero() {
-    sub.EndDate = endDateDB.Format("01-2006")
+if endDateDB.Valid {
+    sub.EndDate = endDateDB.Time.Format("01-2006")
 }
 	return &sub, nil
 }
@@ -114,7 +116,8 @@ func ListSubscriptions(limit, offset int) ([]models.Subscription, error) {
 	defer rows.Close()
 
 	var subscriptions []models.Subscription
-	var startDate, endDate time.Time
+	var startDate time.Time
+	var endDate sql.NullTime
 	for rows.Next() {
 		var sub models.Subscription
 		err := rows.Scan(&sub.ID, &sub.ServiceName, &sub.Price, &sub.UserID, &startDate, &endDate)
@@ -123,8 +126,8 @@ func ListSubscriptions(limit, offset int) ([]models.Subscription, error) {
 		}
 
 sub.StartDate = startDate.Format("01-2006")
-if !endDate.IsZero() {
-    sub.EndDate = endDate.Format("01-2006")
+if endDate.Valid {
+    sub.EndDate = endDate.Time.Format("01-2006")
 }
 		subscriptions = append(subscriptions, sub)
 	}
@@ -133,58 +136,59 @@ if !endDate.IsZero() {
 
 // GetTotalCost - возвращает суммарную стоимость подписок за период с фильтрацией
 func GetTotalCost(userID, serviceName, startDate, endDate string) (int, error) {
-// 	query := `SELECT id, service_name, price, user_id, start_date, end_date 
-//              FROM subscriptions 
- //             ORDER BY user_id, id
-//              LIMIT $1 OFFSET $2`
+// startDate-стартовая дата, endDate-конечная дата просчитываемого периода, 
+// указанного в задании на расчет- обязательные поля!!!
+// startDateTimeDB-начало подписки, взятое из базы данных-обязательное поле
+// endDateTimeDB-конец подписки, взятое из базы данных- не обязательное поле
 
-startDateDB, err := time.Parse("01-2006", startDate)
+startDateTimeDB, err := time.Parse("01-2006", startDate)
 	 if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("invalid startDate: %w", err)// startDate обязательное поле
 		}
-	var  endDateDB *time.Time
+		var endDateTimeDB time.Time
 		if endDate!="" {
-			 tempVar, err := time.Parse("01-2006", endDate)
-	 if err != nil {
-		return 0, err
-		} 
-		endDateDB = &tempVar
-	}
-	query := `SELECT COALESCE(SUM(price), 0) FROM subscriptions WHERE 1=1`
-	var args []any
-	x := 1
-	if userID != "" {
-		query += fmt.Sprintf(" AND user_id = $%d", x)
-		args = append(args, userID)
-		x++
-	}
-	if serviceName != "" {
-		query += fmt.Sprintf(" AND service_name = $%d", x)
-		args = append(args, serviceName)
-		x++
-	}
-	if startDate != "" {
-		startDateDB := convertToDatabase(startDate)
-		query += fmt.Sprintf(" AND start_date >= $%d", x)
-		args = append(args, startDateDB)
-		x++
-	}
-	if endDate != "" {
-		endDateDB := convertToDatabase(endDate)
-		query += fmt.Sprintf(" AND start_date  <= $%d", x)
-		args = append(args, endDateDB)
-	}
-
-	var total int
-	err := DB.QueryRow(query, args...).Scan(&total)
-	return total, err
+			 tempVar, err2 := time.Parse("01-2006", endDate)
+	 if err2 != nil {
+		return 0, fmt.Errorf("invalid endDate: %w", err)// endDate передан, но не соответствует формату MM-YYYY
+		} 	
+		endDateTimeDB = tempVar	
+endDateTimeDB = time.Date(tempVar.Year(), tempVar.Month()+1, 0, 0, 0, 0, 0, time.UTC)// Превращаем первый день в последний			
+	} else {
+//    endDateTimeDB,_ = time.Parse("2006-01", "2100-01")// присваиваем максимальное время, если данных нет в базе
+endDateTimeDB = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
 }
-
-func convertToDatabase(date string) string {
-	length := strings.Split(date, "-")
-	return length[1] + "-" + length[0]
+if startDateTimeDB.After(endDateTimeDB) {
+    return 0, fmt.Errorf( "start_date > end_date")
 }
-func convertFromDatabase(date string) string {
-	length := strings.Split(date, "-")
-	return length[1] + "-" + length[0]
+	    query := `
+        SELECT COALESCE
+		(SUM
+		     ( price * (EXTRACT(                MONTH FROM AGE(    LEAST     (COALESCE(end_date, 'infinity'), $2),
+                                                                   GREATEST                      (start_date, $1)
+											                    )
+					             )+1   
+					    )
+             ),
+		 0) AS total
+                      FROM subscriptions WHERE start_date <= $2 AND (end_date IS NULL OR end_date >= $1)`
+
+    args := []interface{}{startDateTimeDB, endDateTimeDB }
+
+    if userID != "" {
+        query += " AND user_id = $" + strconv.Itoa(len(args)+1)
+        args = append(args, userID)
+    }
+    if serviceName != "" {
+        query += " AND service_name = $" + strconv.Itoa(len(args)+1)
+        args = append(args, serviceName)
+    }
+
+    var total int
+
+	//log.Printf("Query: %s", query)
+  //  log.Printf("Args: startDateTimeDB=%v, endDateTimeDB=%v, userID=%s, serviceName=%s", 
+ //   startDateTimeDB, endDateTimeDB, userID, serviceName)
+    err = DB.QueryRow(query, args...).Scan(&total)
+//	log.Printf("SQL error: %v", err) 
+    return total, err
 }

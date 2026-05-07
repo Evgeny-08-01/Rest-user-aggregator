@@ -8,7 +8,6 @@ import (
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
-	"github.com/google/uuid"
 )
 
 // @Summary      Создать подписку
@@ -231,19 +230,18 @@ func GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
 	serviceName := r.URL.Query().Get("service_name")
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
-// 2. Валидация
-    _, err := uuid.Parse(userID)
-	if err != nil {
-        writeJSONError(w, http.StatusBadRequest, "user_id must always be a valid UUID")
-        return
-    }
 
-	//  3. Вызвать database.GetTotalCost
-	total, err := database.GetTotalCost(userID, serviceName, startDate, endDate)
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
-		return
-	}
+
+	//  2. Вызвать database.GetTotalCost
+total, err := database.GetTotalCost(userID, serviceName, startDate, endDate)
+if err != nil {
+    if err.Error() == "start_date > end_date" {
+        writeJSONError(w, http.StatusBadRequest, "start_date > end_date")
+    } else {
+        writeJSONError(w, http.StatusInternalServerError, "Database error")
+    }
+    return
+}
 	// 3. Ответ
 	writeJSON(w, http.StatusOK, map[string]int{"total": total})
 }
