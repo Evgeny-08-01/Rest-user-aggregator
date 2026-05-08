@@ -22,6 +22,7 @@ import (
 // @Router       /subscriptions [post]
 // 1. CreateSubscriptionHandler-Хэндлер записи одной строки
 func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req models.Subscription
 	// 1. Распарсить JSON
 	err := parseJSON(r, &req)
@@ -38,7 +39,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	}	
 
 	// 3. Вызвать функцию database.CreateSubscription-создаем запись в базе данных
-	id, err := database.CreateSubscription(req)
+	id, err := database.CreateSubscription(ctx,req)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Database error")
 		return
@@ -59,6 +60,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 // @Router       /subscriptions/{id} [get]
 // 2. GetSubscriptionHandler-Хэндлер чтения одной строки
 func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	// 1. Получить id
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
@@ -67,7 +69,7 @@ func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 2. Вызвать database.GetSubscription
-	sub, err := database.GetSubscriptionByID(id)
+	sub, err := database.GetSubscriptionByID(ctx,id)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Database error")
 		return
@@ -91,6 +93,7 @@ func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 // @Router        /subscriptions/{id} [put]
 // 3. UpdateSubscriptionHandler-Хэндлер обновления одной строки
 func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req models.Subscription
 	// 1. Получить id из url
 	idStr := r.PathValue("id")
@@ -114,7 +117,7 @@ func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 4.  Вызвать database.UpdateSubscription
-	err = database.UpdateSubscription(req)
+	err = database.UpdateSubscription(ctx,req)
 if err != nil {
     if err == sql.ErrNoRows {
         writeJSONError(w, http.StatusNotFound, "Subscription not found")
@@ -138,6 +141,7 @@ if err != nil {
 // @Router       /subscriptions/{id} [delete]
 // 4. DeleteSubscriptionHandler-Хэндлер удаления строки по id
 func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	// 1. Получить id
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
@@ -148,7 +152,7 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Вызвать database.DeleteSubscription
 
-	err = database.DeleteSubscription(id)
+	err = database.DeleteSubscription(ctx,id)
 if err != nil {
     if err == sql.ErrNoRows {
         writeJSONError(w, http.StatusNotFound, "Subscription not found")
@@ -173,6 +177,7 @@ if err != nil {
 // @Router        /subscriptions [get]
 // 5. ListSubscriptionsHandler-Хэндлер чтения всех строк по фильтру
 func ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	// 1. Валидация
 	// Получить параметры limit и offset из URL(если их нет,то предустановка в программе)
 	limit := 20
@@ -202,7 +207,7 @@ if offsetStr != "" {
     offset = parsed
 	}
 	// 2. Вызвать database.ListSubscriptions
-	list, err := database.ListSubscriptions(limit, offset)
+	list, err := database.ListSubscriptions(ctx,limit, offset)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
 		return
@@ -225,6 +230,7 @@ if offsetStr != "" {
 //  6. GetTotalCostHandler-Хэндлер для подсчета суммарной стоимости всех подписок за
 //     выбранный период с фильтрацией по id пользователя и названию подписки
 func GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	// 1. Получаем параметры из URL (не парсим JSON)
 	userID := r.URL.Query().Get("user_id")
 	serviceName := r.URL.Query().Get("service_name")
@@ -233,7 +239,7 @@ func GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	//  2. Вызвать database.GetTotalCost
-total, err := database.GetTotalCost(userID, serviceName, startDate, endDate)
+total, err := database.GetTotalCost(ctx,userID, serviceName, startDate, endDate)
 if err != nil {
     if err.Error() == "start_date > end_date" {
         writeJSONError(w, http.StatusBadRequest, "start_date > end_date")

@@ -2,6 +2,7 @@ package database
 
 // Файл database_CRUDL_func-файл с функциями CRUDL
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -13,7 +14,7 @@ import (
 
 // CreateSubscription : 1 ФУНКЦИЯ== добавляет подписку в конец БД и ******** Create
 // возвращает id+error
-func CreateSubscription(sub models.Subscription) (int, error) {
+func CreateSubscription(ctx context.Context,sub models.Subscription) (int, error) {
 	var id int
 	query := `INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date) VALUES ($1,$2,$3,$4,$5) RETURNING id`
 	startDate, err := time.Parse("01-2006", sub.StartDate)
@@ -27,7 +28,7 @@ func CreateSubscription(sub models.Subscription) (int, error) {
 		return 0, err
 		} 
 		endDate = &tempVar}
-	err = DB.QueryRow(query, sub.ServiceName, sub.Price, sub.UserID, startDate, endDate).Scan(&id)
+	err = DB.QueryRowContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDate, endDate).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -35,9 +36,9 @@ func CreateSubscription(sub models.Subscription) (int, error) {
 }
 
 // GetSubscriptionByID : 2 ФУНКЦИЯ==  получение подписки по ID***************** Read
-func GetSubscriptionByID(id int) (*models.Subscription, error) {
+func GetSubscriptionByID(ctx context.Context,id int) (*models.Subscription, error) {
 	query := `SELECT id, service_name, price, user_id, start_date, end_date  FROM subscriptions WHERE id = $1`
-	row := DB.QueryRow(query, id)
+	row := DB.QueryRowContext(ctx,query, id)
 	var sub models.Subscription
 	var startDateDB time.Time
 	var endDateDB sql.NullTime
@@ -57,7 +58,7 @@ if endDateDB.Valid {
 
 
 // UpdateSubscription : 3 ФУНКЦИЯ== - обновление подписки*********************** Update
-func UpdateSubscription(sub models.Subscription) error {
+func UpdateSubscription(ctx context.Context,sub models.Subscription) error {
   startDateDB, err := time.Parse("01-2006", sub.StartDate)
 	 if err != nil {
 		return err
@@ -71,7 +72,7 @@ func UpdateSubscription(sub models.Subscription) error {
 		endDateDB = &tempVar}
     query := `UPDATE subscriptions SET service_name = $1, price = $2, user_id = $3,
               start_date = $4, end_date = $5 WHERE id = $6`
-    result, err := DB.Exec(query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
+    result, err := DB.ExecContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
     if err != nil {
         return err
     }
@@ -85,9 +86,9 @@ func UpdateSubscription(sub models.Subscription) error {
     return nil
 }
 // DeleteSubscription : 4 ФУНКЦИЯ== -  удаляет подписку по ID     *************** Delete
-func DeleteSubscription(id int) error {
+func DeleteSubscription(ctx context.Context,id int) error {
     query := `DELETE FROM subscriptions WHERE id = $1`
-    result, err := DB.Exec(query, id)
+    result, err := DB.ExecContext(ctx,query, id)
     if err != nil {
         return err
     }
@@ -103,13 +104,13 @@ func DeleteSubscription(id int) error {
 // ListSubscriptions : 5 ФУНКЦИЯ== - получение списка подписок,
 // отсортированный по user_id + по id, с пагинацией(limit, offset)  *************** List
 // ListSubscriptions - возвращает список подписок с пагинацией, отсортированный по user_id и id
-func ListSubscriptions(limit, offset int) ([]models.Subscription, error) {
+func ListSubscriptions(ctx context.Context,limit, offset int) ([]models.Subscription, error) {
 	query := `SELECT id, service_name, price, user_id, start_date, end_date 
               FROM subscriptions 
               ORDER BY user_id, id
               LIMIT $1 OFFSET $2`
 
-	rows, err := DB.Query(query, limit, offset)
+	rows, err := DB.QueryContext(ctx,query, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ if endDate.Valid {
 }
 
 // GetTotalCost - возвращает суммарную стоимость подписок за период с фильтрацией
-func GetTotalCost(userID, serviceName, startDate, endDate string) (int, error) {
+func GetTotalCost(ctx context.Context,userID, serviceName, startDate, endDate string) (int, error) {
 // startDate-стартовая дата, endDate-конечная дата просчитываемого периода, 
 // указанного в задании на расчет- обязательные поля!!!
 // startDateTimeDB-начало подписки, взятое из базы данных-обязательное поле
@@ -184,11 +185,6 @@ if startDateTimeDB.After(endDateTimeDB) {
     }
 
     var total int
-
-	//log.Printf("Query: %s", query)
-  //  log.Printf("Args: startDateTimeDB=%v, endDateTimeDB=%v, userID=%s, serviceName=%s", 
- //   startDateTimeDB, endDateTimeDB, userID, serviceName)
-    err = DB.QueryRow(query, args...).Scan(&total)
-//	log.Printf("SQL error: %v", err) 
+    err = DB.QueryRowContext(ctx,query, args...).Scan(&total)
     return total, err
 }
