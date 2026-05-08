@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	_ "github.com/Evgeny-08-01/Rest-user-aggregator/docs"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/handlers"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/pkg/logger"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/swaggo/http-swagger"
-	_ "github.com/Evgeny-08-01/Rest-user-aggregator/docs"
 )
 
 // @title Subscription API
@@ -54,7 +58,7 @@ if databasePath == "" {
 		return
 	}
 	// 5. Запускаем миграции
-	err = runMigrations()
+	err = runMigrations()  // пользовательская функция (см. ниже)
 	if err != nil {
 		log.Println("Migrations error:", err)
 	}
@@ -62,25 +66,50 @@ if databasePath == "" {
 	mux := http.NewServeMux()
 
 	// 7. CRUDL операции
-	mux.HandleFunc("POST /api/subscriptions", handlers.CreateSubscriptionHandler)
-	mux.HandleFunc("GET /api/subscriptions/{id}", handlers.GetSubscriptionHandler)
-	mux.HandleFunc("PUT /api/subscriptions/{id}", handlers.UpdateSubscriptionHandler)
-	mux.HandleFunc("DELETE /api/subscriptions/{id}", handlers.DeleteSubscriptionHandler)
-	mux.HandleFunc("GET /api/subscriptions", handlers.ListSubscriptionsHandler)
-	mux.HandleFunc("GET /api/subscriptions/total-cost", handlers.GetTotalCostHandler)
-	mux.HandleFunc("GET /swagger/", httpSwagger.WrapHandler)
+	mux.HandleFunc("POST    /api/subscriptions",               handlers.CreateSubscriptionHandler)
+	mux.HandleFunc("GET     /api/subscriptions/{id}",          handlers.GetSubscriptionHandler)
+	mux.HandleFunc("PUT     /api/subscriptions/{id}",          handlers.UpdateSubscriptionHandler)
+	mux.HandleFunc("DELETE  /api/subscriptions/{id}",          handlers.DeleteSubscriptionHandler)
+	mux.HandleFunc("GET     /api/subscriptions",               handlers.ListSubscriptionsHandler)
+	mux.HandleFunc("GET     /api/subscriptions/total-cost",    handlers.GetTotalCostHandler)
+	mux.HandleFunc("GET     /swagger/",                        httpSwagger.WrapHandler)
 	// 8. Получаем порт из .env
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
 	}
-	// 9. Запускаем сервер
-	log.Printf("Server starting on port %s", port)
-	//  запуск HTTP сервера
-	err = http.ListenAndServe(":"+port, mux)
-	if err != nil {
-		log.Fatal("Server failed:", err)
-	}
+   // 9. HTTP сервер с таймаутами 
+    srv := &http.Server{
+        Addr:         ":" + port,
+        Handler:      mux,
+        ReadTimeout:  5  * time.Second,
+        WriteTimeout: 10 * time.Second,
+        IdleTimeout:  15 * time.Second,
+    }
+ // 10. Запускаем сервер в горутине
+    go func() {
+        log.Printf("Server starting on port %s", port)
+        if err2 := srv.ListenAndServe(); err2 != nil && err2 != http.ErrServerClosed {
+            log.Fatalf("Server failed: %v", err2)
+        }
+    }()
+
+// 11. Graceful shutdown (ожидание сигнала)
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    <-quit
+
+    log.Println("Shutting down server...")
+// 12. Контекст с таймаутом на завершение (5 секунд)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    // 13. Останавливаем сервер
+    if err := srv.Shutdown(ctx); err != nil {
+        log.Fatal("Server forced to shutdown:", err)
+    }
+
+    log.Println("Server exited properly")
 }
 
 func runMigrations() error {
