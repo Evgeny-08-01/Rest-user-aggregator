@@ -1,5 +1,7 @@
 services:
   server:
+    volumes:
+      - ./app.log:/root/app.log
     build: .
     env_file: 
       - .env

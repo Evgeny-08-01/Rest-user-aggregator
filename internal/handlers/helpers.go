@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
 	"github.com/google/uuid"
@@ -79,4 +80,25 @@ func validateSubscription(req models.Subscription) error {
 		return fmt.Errorf("end_date must be in format MM-YYYY")
 	}
 	return nil
+}
+
+
+// loggingResponseWriter обёртка для перехвата HTTP статуса
+type loggingResponseWriter struct {
+    http.ResponseWriter
+    statusCode int
+}
+
+// WriteHeader перехватывает статус код
+func (lrw *loggingResponseWriter) WriteHeader(code int) {
+    lrw.statusCode = code
+    lrw.ResponseWriter.WriteHeader(code)
+}
+func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        lrw := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+        next(lrw, r)
+        log.Printf("%s %s %d %v", r.Method, r.URL.Path, lrw.statusCode, time.Since(start))
+    }
 }

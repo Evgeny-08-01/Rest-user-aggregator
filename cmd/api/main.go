@@ -24,7 +24,7 @@ import (
 // @BasePath /api
 func main() {
 	// 1. Загружаем .env файл
-	logger.Init("app.log")
+	logger.Init("/root/app.log")
 	err := godotenv.Load("./.env")
 	if err != nil {
 		log.Println(".env file not found")
@@ -66,12 +66,12 @@ if databasePath == "" {
 	mux := http.NewServeMux()
 
 	// 7. CRUDL операции
-	mux.HandleFunc("POST    /api/subscriptions",               handlers.CreateSubscriptionHandler)
-	mux.HandleFunc("GET     /api/subscriptions/{id}",          handlers.GetSubscriptionHandler)
-	mux.HandleFunc("PUT     /api/subscriptions/{id}",          handlers.UpdateSubscriptionHandler)
-	mux.HandleFunc("DELETE  /api/subscriptions/{id}",          handlers.DeleteSubscriptionHandler)
-	mux.HandleFunc("GET     /api/subscriptions",               handlers.ListSubscriptionsHandler)
-	mux.HandleFunc("GET     /api/subscriptions/total-cost",    handlers.GetTotalCostHandler)
+	mux.HandleFunc("POST    /api/subscriptions",               handlers.LoggingMiddleware(handlers.CreateSubscriptionHandler))
+	mux.HandleFunc("GET     /api/subscriptions/{id}",          handlers.LoggingMiddleware(handlers.GetSubscriptionHandler))
+	mux.HandleFunc("PUT     /api/subscriptions/{id}",          handlers.LoggingMiddleware(handlers.UpdateSubscriptionHandler))
+	mux.HandleFunc("DELETE  /api/subscriptions/{id}",          handlers.LoggingMiddleware(handlers.DeleteSubscriptionHandler))
+	mux.HandleFunc("GET     /api/subscriptions",               handlers.LoggingMiddleware(handlers.ListSubscriptionsHandler))
+	mux.HandleFunc("GET     /api/subscriptions/total-cost",    handlers.LoggingMiddleware(handlers.GetTotalCostHandler))
 	mux.HandleFunc("GET     /swagger/",                        httpSwagger.WrapHandler)
 	// 8. Получаем порт из .env
 	port := os.Getenv("SERVER_PORT")
@@ -104,7 +104,7 @@ if databasePath == "" {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    // 13. Останавливаем сервер
+// 13. Останавливаем сервер
     if err := srv.Shutdown(ctx); err != nil {
         log.Fatal("Server forced to shutdown:", err)
     }
