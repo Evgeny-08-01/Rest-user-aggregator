@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
+	"github.com/Evgeny-08-01/Rest-user-aggregator/pkg/logger"
 	"github.com/google/uuid"
 )
 
@@ -25,7 +26,7 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.WriteHeader(status)
 	err := json.NewEncoder(w).Encode(data)
 	if err != nil {
-		log.Printf("Failed to encode JSON response: %v", err)
+		logger.Error("Failed to encode JSON response: %v", err)
 	}
 }
 

@@ -1,5 +1,7 @@
 services:
   server:
+    environment:
+      - ENV=docker 
     volumes:
       - ./app.log:/root/app.log
     build: .

@@ -33,4 +33,5 @@ logs/
 docker-compose.override.yml
 
 # OS
-Thumbs.db
+Thumbs.dbdatabase/
+database/

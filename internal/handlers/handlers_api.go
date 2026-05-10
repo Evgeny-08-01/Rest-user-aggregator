@@ -8,6 +8,7 @@ import (
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
+	"github.com/Evgeny-08-01/Rest-user-aggregator/pkg/logger"
 )
 
 // @Summary      Создать подписку
@@ -27,6 +28,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 1. Распарсить JSON
 	err := parseJSON(r, &req)
 	if err != nil {
+		logger.Warn("CreateSubscriptionHandler: failed to parse JSON: %v", err)
 		writeJSONError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
@@ -34,6 +36,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 2. Валидация
 	err = validateSubscription(req)
 	if err != nil {
+		logger.Warn("CreateSubscriptionHandler: validation failed: %v", err)
 		writeJSONError(w, http.StatusBadRequest, "Validation error")
 		return
 	}	
@@ -41,10 +44,14 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 3. Вызвать функцию database.CreateSubscription-создаем запись в базе данных
 	id, err := database.CreateSubscription(ctx,req)
 	if err != nil {
+		logger.Error("CreateSubscriptionHandler: database error for user_id=%s, service=%s: %v",
+			req.UserID, req.ServiceName, err)
 		writeJSONError(w, http.StatusInternalServerError, "Database error")
 		return
 	}
-	// 4. Ответ-передаем id созданной записи в базе данных в виде JSON в теле ответа хэндлера 
+	// 4. Ответ-передаем id созданной записи в базе данных в виде JSON в теле ответа хэндлера
+	logger.Debug("CreateSubscriptionHandler: successfully created subscription id=%d for user_id=%s",
+		id, req.UserID)
 	writeJSON(w, http.StatusCreated, map[string]int{"id": id})
 }
 
@@ -65,20 +72,24 @@ func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.Warn("GetSubscriptionHandler: invalid ID format: %s", idStr)
 		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
 	// 2. Вызвать database.GetSubscription
 	sub, err := database.GetSubscriptionByID(ctx,id)
 	if err != nil {
+		logger.Error("GetSubscriptionHandler: database error for id=%d: %v", id, err)
 		writeJSONError(w, http.StatusInternalServerError, "Database error")
 		return
 	}
 	if sub == nil {
+		logger.Warn("GetSubscriptionHandler: subscription not found for id=%d", id)
 		writeJSONError(w, http.StatusNotFound, "Subscription not found")
 		return
 	}
 	// 3. Ответ	
+	logger.Debug("GetSubscriptionHandler: successfully retrieved subscription id=%d", id)
 	writeJSON(w, http.StatusOK, sub)
 }
 // @Summary     Хэндлер обновления одной строки
@@ -99,6 +110,7 @@ func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.Warn("UpdateSubscriptionHandler: invalid ID format: %s", idStr)
 		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
@@ -106,6 +118,7 @@ func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 2. Распарсить JSON
 	err = parseJSON(r, &req)
 	if err != nil {
+		logger.Warn("UpdateSubscriptionHandler: failed to parse JSON for id=%d: %v", id, err)
 		writeJSONError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
@@ -113,6 +126,7 @@ func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 3. Валидация
 	err = validateSubscription(req)
 	if err != nil {
+		logger.Warn("UpdateSubscriptionHandler: validation failed for id=%d: %v", id, err)
 		writeJSONError(w, http.StatusBadRequest, "Validation error")
 		return
 	}
@@ -120,13 +134,16 @@ func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	err = database.UpdateSubscription(ctx,req)
 if err != nil {
     if err == sql.ErrNoRows {
+	logger.Warn("UpdateSubscriptionHandler: subscription not found for id=%d", id)
         writeJSONError(w, http.StatusNotFound, "Subscription not found")
     } else {
+		logger.Error("UpdateSubscriptionHandler: database error for id=%d: %v", id, err)
         writeJSONError(w, http.StatusInternalServerError, "Database error")
     }
     return
 }
 	// 5. Ответ
+	logger.Debug("UpdateSubscriptionHandler: successfully updated subscription id=%d", id)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -146,6 +163,7 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.Warn("DeleteSubscriptionHandler: invalid ID format: %s", idStr)
 		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
@@ -155,13 +173,16 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	err = database.DeleteSubscription(ctx,id)
 if err != nil {
     if err == sql.ErrNoRows {
+		logger.Warn("DeleteSubscriptionHandler: subscription not found for id=%d", id)
         writeJSONError(w, http.StatusNotFound, "Subscription not found")
     } else {
+		logger.Error("DeleteSubscriptionHandler: database error for id=%d: %v", id, err)
         writeJSONError(w, http.StatusInternalServerError, "Database error")
     }
     return
 }
 		// 3. Ответ
+	logger.Debug("DeleteSubscriptionHandler: successfully deleted subscription id=%d", id)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -186,6 +207,7 @@ func ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	if limitStr != "" {
 		parsed, err := strconv.Atoi(limitStr)
 		if err != nil {
+		logger.Warn("ListSubscriptionsHandler: invalid limit value: %s", limitStr)
 			writeJSONError(w, http.StatusBadRequest, "Invalid limit")
 			return
 		}
@@ -197,10 +219,12 @@ func ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 if offsetStr != "" {
     parsed, err := strconv.Atoi(offsetStr)
     if err != nil {
+	logger.Warn("ListSubscriptionsHandler: invalid offset value: %s", offsetStr)
         writeJSONError(w, http.StatusBadRequest, "Invalid offset")
         return
     }
     if parsed < 0 {
+		logger.Warn("ListSubscriptionsHandler: negative offset: %d", parsed)
         writeJSONError(w, http.StatusBadRequest, "Negative offset")
         return
     }
@@ -209,10 +233,13 @@ if offsetStr != "" {
 	// 2. Вызвать database.ListSubscriptions
 	list, err := database.ListSubscriptions(ctx,limit, offset)
 	if err != nil {
+		logger.Error("ListSubscriptionsHandler: database error (limit=%d, offset=%d): %v", limit, offset, err)
 		writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
 		return
 	}
 	// 3. Ответ	
+	logger.Debug("ListSubscriptionsHandler: successfully fetched %d subscriptions (limit=%d, offset=%d)",
+		len(list), limit, offset)
 	writeJSON(w, http.StatusOK, list)
 }
 
@@ -236,18 +263,22 @@ func GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
 	serviceName := r.URL.Query().Get("service_name")
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
-
+	logger.Debug("GetTotalCostHandler: request params - user_id=%s, service_name=%s, start_date=%s, end_date=%s",
+		userID, serviceName, startDate, endDate)
 
 	//  2. Вызвать database.GetTotalCost
 total, err := database.GetTotalCost(ctx,userID, serviceName, startDate, endDate)
 if err != nil {
     if err.Error() == "start_date > end_date" {
+	logger.Warn("GetTotalCostHandler: invalid date range - start_date=%s, end_date=%s", startDate, endDate)
         writeJSONError(w, http.StatusBadRequest, "start_date > end_date")
     } else {
+		logger.Error("GetTotalCostHandler: database error: %v", err)
         writeJSONError(w, http.StatusInternalServerError, "Database error")
     }
     return
 }
 	// 3. Ответ
+logger.Debug("GetTotalCostHandler: successfully calculated total=%d", total)
 	writeJSON(w, http.StatusOK, map[string]int{"total": total})
 }

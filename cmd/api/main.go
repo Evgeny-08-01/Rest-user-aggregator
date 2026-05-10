@@ -24,26 +24,39 @@ import (
 // @BasePath /api
 func main() {
 	// 1. Загружаем .env файл
-	logger.Init("/root/app.log")
 	err := godotenv.Load("./.env")
 	if err != nil {
-		log.Println(".env file not found")
+		 logger.Warn(".env file not found, using default values") 
 	}
+
+ // 2. Инициализируем логгер (читаем уровень из .env)
+ 
+    logLevel := os.Getenv("LOG_LEVEL")
+    if logLevel == "" {
+        logLevel = "info"
+    }
+logPath := "/root/app.log"
+if os.Getenv("ENV") != "docker" {
+    logPath = "app.log"
+}	
+logger.Init(logPath, logLevel)
+logger.Info("Starting Subscription API server") 
 
 	// 2. Получаем путь к БД ИЗ .env
 databasePath := os.Getenv("DB_PATH")
 if databasePath == "" {
-    // Для Docker Compose (сервер и БД в разных контейнерах)
     databasePath = "postgres://postgres:mysecret@db:5432/subscriptions?sslmode=disable"
+	logger.Warn("DB_PATH not set, using default")
 }
 	// 3. Подключаемся к БД
 	err = database.Init(databasePath) // Подключение к БД
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		 logger.Fatal("Failed to connect to database: %v", err) 
 	}
 
 	// Откладываем закрытие БД до завершения программы
 	defer database.Close()
+	logger.Info("Database connected successfully") 
 	// 4. Проверяем на наличие миграций
 	if len(os.Args) > 1 && os.Args[1] == "-down" {
 		downSQL, err2 := os.ReadFile("migrations/000001_create_subscriptions_table.down.sql")
@@ -60,7 +73,7 @@ if databasePath == "" {
 	// 5. Запускаем миграции
 	err = runMigrations()  // пользовательская функция (см. ниже)
 	if err != nil {
-		log.Println("Migrations error:", err)
+		logger.Warn("Migrations warning (maybe already applied): %v", err)
 	}
 	// 6. Роутер (switch для URL)
 	mux := http.NewServeMux()
@@ -77,6 +90,7 @@ if databasePath == "" {
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
+		logger.Warn("SERVER_PORT not set, using default 8080") 
 	}
    // 9. HTTP сервер с таймаутами 
     srv := &http.Server{
@@ -88,9 +102,10 @@ if databasePath == "" {
     }
  // 10. Запускаем сервер в горутине
     go func() {
-        log.Printf("Server starting on port %s", port)
+             logger.Info("Server starting on port %s", port) 
         if err2 := srv.ListenAndServe(); err2 != nil && err2 != http.ErrServerClosed {
-            log.Fatalf("Server failed: %v", err2)
+           logger.Error("Server failed: %v", err2)
+			os.Exit(1) // Завершаем программу с кодом 1
         }
     }()
 
@@ -99,17 +114,18 @@ if databasePath == "" {
     signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
     <-quit
 
-    log.Println("Shutting down server...")
+logger.Info("Shutting down server...")
 // 12. Контекст с таймаутом на завершение (5 секунд)
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
 // 13. Останавливаем сервер
     if err := srv.Shutdown(ctx); err != nil {
-        log.Fatal("Server forced to shutdown:", err)
+       logger.Error("Server forced to shutdown: %v", err)
+	   os.Exit(1)
     }
 
-    log.Println("Server exited properly")
+   logger.Info("Server exited properly")
 }
 
 func runMigrations() error {
