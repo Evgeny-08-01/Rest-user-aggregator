@@ -4,11 +4,11 @@ package database
 import (
 	"context"
 	"database/sql"
-	"log"
 
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/repository"
-	_ "github.com/lib/pq" 
+	"github.com/Evgeny-08-01/Rest-user-aggregator/pkg/logger"
+	_ "github.com/lib/pq"
 )
 
 // db -пакетная переменная (уровня пакета) с соединением с БД. Доступна только внутри пакета database (приватная).
@@ -19,14 +19,16 @@ func Init(databasePath string) error {
 	var err error
 	db, err = sql.Open("postgres", databasePath)
 	if err != nil {
+		logger.Error("Failed to open database connection: %v", err)
 		return err
 	}
 	//  Проверяем подключение
 	err = db.Ping()
 	if err != nil {
+			logger.Error("Failed to ping database: %v", err)
 		return err
 	}
-	log.Println("Database connected")
+	logger.Info("Database connected successfully")
 	return nil
 }
 
@@ -36,9 +38,15 @@ func Close() error {
 		return nil
 	}
 	err := db.Close()
-	db = nil
-	return err
+		db = nil
+	if err != nil {
+		logger.Error("Failed to close database connection: %v", err)
+		return err
+	}
+	logger.Debug("Database connection closed")
+	return nil
 }
+
 // PostgresRepo структура - реализует интерфейс SubscriptionRepository
 type PostgresRepo struct {
     db *sql.DB
@@ -48,6 +56,10 @@ var _ repository.SubscriptionRepository = (*PostgresRepo)(nil)
 
 // NewPostgresRepo - конструктор
 func NewPostgresRepo() *PostgresRepo {
+	 if db == nil {
+        logger.Error("Database not initialized. Call Init() first")
+        return nil
+    }
     return &PostgresRepo{db: db}
 }
 // CreateMtd - вызывает существующую функцию CreateSubscription

@@ -34,4 +34,4 @@ docker-compose.override.yml
 
 # OS
 Thumbs.dbdatabase/
-database/
+/database/
