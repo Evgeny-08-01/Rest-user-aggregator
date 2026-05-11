@@ -6,11 +6,20 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/models"
+	"github.com/Evgeny-08-01/Rest-user-aggregator/internal/repository"
 	"github.com/Evgeny-08-01/Rest-user-aggregator/pkg/logger"
 )
 
+// Handler - структура хендлера, принимающая репозиторий
+type Handler struct {
+    Repo repository.SubscriptionRepository
+}
+
+// NewHandler - конструктор хендлера
+func NewHandler(repo repository.SubscriptionRepository) *Handler {
+    return &Handler{Repo: repo}
+}
 // @Summary      Создать подписку
 // @Description  Добавляет новую подписку в базу данных
 // @Tags         subscriptions
@@ -22,7 +31,7 @@ import (
 // @Failure      500  {object}  map[string]string
 // @Router       /subscriptions [post]
 // 1. CreateSubscriptionHandler-Хэндлер записи одной строки
-func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req models.Subscription
 	// 1. Распарсить JSON
@@ -42,7 +51,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	}	
 
 	// 3. Вызвать функцию database.CreateSubscription-создаем запись в базе данных
-	id, err := database.CreateSubscription(ctx,req)
+	id, err := h.Repo.CreateMtd(ctx,req)
 	if err != nil {
 		logger.Error("CreateSubscriptionHandler: database error for user_id=%s, service=%s: %v",
 			req.UserID, req.ServiceName, err)
@@ -66,7 +75,7 @@ func CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 // @Failure      500  {object}  map[string]string
 // @Router       /subscriptions/{id} [get]
 // 2. GetSubscriptionHandler-Хэндлер чтения одной строки
-func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// 1. Получить id
 	idStr := r.PathValue("id")
@@ -77,7 +86,7 @@ func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 2. Вызвать database.GetSubscription
-	sub, err := database.GetSubscriptionByID(ctx,id)
+	sub, err := h.Repo.GetByIDMtd(ctx,id)
 	if err != nil {
 		logger.Error("GetSubscriptionHandler: database error for id=%d: %v", id, err)
 		writeJSONError(w, http.StatusInternalServerError, "Database error")
@@ -100,10 +109,11 @@ func GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 // @Param        request body models.Subscription true  "Новые данные"
 // @Success      200   {object}  map[string]string
 // @Failure      400   {object}  map[string]string
+// @Failure      404   {object}  map[string]string 
 // @Failure      500  {object}  map[string]string
 // @Router        /subscriptions/{id} [put]
 // 3. UpdateSubscriptionHandler-Хэндлер обновления одной строки
-func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler)UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req models.Subscription
 	// 1. Получить id из url
@@ -131,7 +141,7 @@ func UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 4.  Вызвать database.UpdateSubscription
-	err = database.UpdateSubscription(ctx,req)
+	err = h.Repo.UpdateMtd(ctx,req)
 if err != nil {
     if err == sql.ErrNoRows {
 	logger.Warn("UpdateSubscriptionHandler: subscription not found for id=%d", id)
@@ -154,10 +164,11 @@ if err != nil {
 // @Param        id   path      int  true  "ID подписки"
 // @Success      200 {object} map[string]string
 // @Failure      400 {object} map[string]string
+// @Failure      404  {object}  map[string]string 
 // @Failure      500 {object} map[string]string
 // @Router       /subscriptions/{id} [delete]
 // 4. DeleteSubscriptionHandler-Хэндлер удаления строки по id
-func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler)DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// 1. Получить id
 	idStr := r.PathValue("id")
@@ -170,7 +181,7 @@ func DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Вызвать database.DeleteSubscription
 
-	err = database.DeleteSubscription(ctx,id)
+	err = h.Repo.DeleteMtd(ctx,id)
 if err != nil {
     if err == sql.ErrNoRows {
 		logger.Warn("DeleteSubscriptionHandler: subscription not found for id=%d", id)
@@ -197,7 +208,7 @@ if err != nil {
 // @Failure      500 {object} map[string]string
 // @Router        /subscriptions [get]
 // 5. ListSubscriptionsHandler-Хэндлер чтения всех строк по фильтру
-func ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler)ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// 1. Валидация
 	// Получить параметры limit и offset из URL(если их нет,то предустановка в программе)
@@ -231,7 +242,7 @@ if offsetStr != "" {
     offset = parsed
 	}
 	// 2. Вызвать database.ListSubscriptions
-	list, err := database.ListSubscriptions(ctx,limit, offset)
+	list, err := h.Repo.ListMtd(ctx,limit, offset)
 	if err != nil {
 		logger.Error("ListSubscriptionsHandler: database error (limit=%d, offset=%d): %v", limit, offset, err)
 		writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
@@ -256,7 +267,7 @@ if offsetStr != "" {
 // @Router       /subscriptions/total-cost [get]
 //  6. GetTotalCostHandler-Хэндлер для подсчета суммарной стоимости всех подписок за
 //     выбранный период с фильтрацией по id пользователя и названию подписки
-func GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
+func (h *Handler)GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	// 1. Получаем параметры из URL (не парсим JSON)
 	userID := r.URL.Query().Get("user_id")
@@ -267,7 +278,7 @@ func GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
 		userID, serviceName, startDate, endDate)
 
 	//  2. Вызвать database.GetTotalCost
-total, err := database.GetTotalCost(ctx,userID, serviceName, startDate, endDate)
+total, err := h.Repo.GetTotalCostMtd(ctx,userID, serviceName, startDate, endDate)
 if err != nil {
     if err.Error() == "start_date > end_date" {
 	logger.Warn("GetTotalCostHandler: invalid date range - start_date=%s, end_date=%s", startDate, endDate)

@@ -31,7 +31,7 @@ func CreateSubscription(ctx context.Context,sub models.Subscription) (int, error
 		return 0, err
 		} 
 		endDate = &tempVar}
-	err = DB.QueryRowContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDate, endDate).Scan(&id)
+	err = db.QueryRowContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDate, endDate).Scan(&id)
 if err != nil {
     logger.Error("CreateSubscription: failed to insert subscription (service=%s, user_id=%s): %v", 
                sub.ServiceName, sub.UserID, err)
@@ -45,7 +45,7 @@ logger.Debug("CreateSubscription: successfully created subscription id=%d for us
 // GetSubscriptionByID : 2 ФУНКЦИЯ==  получение подписки по ID***************** Read
 func GetSubscriptionByID(ctx context.Context,id int) (*models.Subscription, error) {
 	query := `SELECT id, service_name, price, user_id, start_date, end_date  FROM subscriptions WHERE id = $1`
-	row := DB.QueryRowContext(ctx,query, id)
+	row := db.QueryRowContext(ctx,query, id)
 	var sub models.Subscription
 	var startDateDB time.Time
 	var endDateDB sql.NullTime
@@ -85,7 +85,7 @@ func UpdateSubscription(ctx context.Context,sub models.Subscription) error {
 		endDateDB = &tempVar}
     query := `UPDATE subscriptions SET service_name = $1, price = $2, user_id = $3,
               start_date = $4, end_date = $5 WHERE id = $6`
-    result, err := DB.ExecContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
+    result, err := db.ExecContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
     if err != nil {
 		 logger.Error("UpdateSubscription: exec failed for id %d: %v", sub.ID, err)
         return err
@@ -105,7 +105,7 @@ func UpdateSubscription(ctx context.Context,sub models.Subscription) error {
 // DeleteSubscription : 4 ФУНКЦИЯ== -  удаляет подписку по ID     *************** Delete
 func DeleteSubscription(ctx context.Context,id int) error {
     query := `DELETE FROM subscriptions WHERE id = $1`
-    result, err := DB.ExecContext(ctx,query, id)
+    result, err := db.ExecContext(ctx,query, id)
     if err != nil {
 	 logger.Error("DeleteSubscription: exec failed for id %d: %v", id, err)	
         return err
@@ -131,7 +131,7 @@ func ListSubscriptions(ctx context.Context,limit, offset int) ([]models.Subscrip
               ORDER BY user_id, id
               LIMIT $1 OFFSET $2`
 
-	rows, err := DB.QueryContext(ctx,query, limit, offset)
+	rows, err := db.QueryContext(ctx,query, limit, offset)
 	if err != nil {
 		 logger.Error("ListSubscriptions: query failed with limit=%d, offset=%d: %v", limit, offset, err)
 		return nil, err
@@ -219,7 +219,7 @@ if startDateTimeDB.After(endDateTimeDB) {
     }
 
     var total int
-    err = DB.QueryRowContext(ctx,query, args...).Scan(&total)
+    err = db.QueryRowContext(ctx,query, args...).Scan(&total)
   if err != nil {
         logger.Error("GetTotalCost: query failed with userID=%s, serviceName=%s, startDate=%s, endDate=%s: %v", 
                    userID, serviceName, startDate, endDate, err)

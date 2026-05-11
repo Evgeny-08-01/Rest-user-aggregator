@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/swaggo/http-swagger"
+
 )
 
 // @title Subscription API
@@ -23,12 +23,17 @@ import (
 // @SERVER_PORT=8080
 // @BasePath /api
 func main() {
-	// 1. Загружаем .env файл
-	err := godotenv.Load("./.env")
-	if err != nil {
-		 logger.Warn(".env file not found, using default values") 
-	}
-
+//	err := godotenv.Load("./.env")
+//	if err != nil {
+//		 logger.Warn(".env file not found, using default values") 
+//	}
+if err := godotenv.Load(".env"); err != nil {
+    logger.Warn(".env file not found, using default values")
+} else {
+    logger.Info(".env file loaded successfully")
+    // Выведи значение DB_PATH для проверки
+    logger.Info("DB_PATH from .env: %s", os.Getenv("DB_PATH"))
+}
  // 2. Инициализируем логгер (читаем уровень из .env)
  
     logLevel := os.Getenv("LOG_LEVEL")
@@ -49,42 +54,39 @@ if databasePath == "" {
 	logger.Warn("DB_PATH not set, using default")
 }
 	// 3. Подключаемся к БД
-	err = database.Init(databasePath) // Подключение к БД
+	err := database.Init(databasePath) // Подключение к БД
 	if err != nil {
 		 logger.Fatal("Failed to connect to database: %v", err) 
 	}
+// Откладываем закрытие БД до завершения программы
+defer database.Close()
+logger.Info("Database connected successfully")
 
-	// Откладываем закрытие БД до завершения программы
-	defer database.Close()
-	logger.Info("Database connected successfully") 
-	// 4. Проверяем на наличие миграций
-	if len(os.Args) > 1 && os.Args[1] == "-down" {
-		downSQL, err2 := os.ReadFile("migrations/000001_create_subscriptions_table.down.sql")
-		if err2 != nil {
-			log.Fatal("Failed to read down migration:", err2)
-		}
-		_, err = database.DB.Exec(string(downSQL))
-		if err != nil {
-			log.Fatal("Failed to rollback migration:", err)
-		}
-		log.Println("Migration rolled back")
-		return
-	}
-	// 5. Запускаем миграции
-	err = runMigrations()  // пользовательская функция (см. ниже)
-	if err != nil {
-		logger.Warn("Migrations warning (maybe already applied): %v", err)
-	}
+// 4. Проверяем на наличие миграций
+if len(os.Args) > 1 && os.Args[1] == "-down" {
+    if err := database.RollbackMigrations(); err != nil {
+        logger.Fatal("Failed to rollback migration: %v", err)
+    }
+    logger.Info("Migration rolled back")
+    return
+}
+
+// 5. Запускаем миграции
+if err := database.RunMigrations(); err != nil {
+    logger.Warn("Migrations warning (maybe already applied): %v", err)
+}
 	// 6. Роутер (switch для URL)
+	repo := database.NewPostgresRepo()
+    handler := handlers.NewHandler(repo)
 	mux := http.NewServeMux()
 
 	// 7. CRUDL операции
-	mux.HandleFunc("POST    /api/subscriptions",               handlers.LoggingMiddleware(handlers.CreateSubscriptionHandler))
-	mux.HandleFunc("GET     /api/subscriptions/{id}",          handlers.LoggingMiddleware(handlers.GetSubscriptionHandler))
-	mux.HandleFunc("PUT     /api/subscriptions/{id}",          handlers.LoggingMiddleware(handlers.UpdateSubscriptionHandler))
-	mux.HandleFunc("DELETE  /api/subscriptions/{id}",          handlers.LoggingMiddleware(handlers.DeleteSubscriptionHandler))
-	mux.HandleFunc("GET     /api/subscriptions",               handlers.LoggingMiddleware(handlers.ListSubscriptionsHandler))
-	mux.HandleFunc("GET     /api/subscriptions/total-cost",    handlers.LoggingMiddleware(handlers.GetTotalCostHandler))
+	mux.HandleFunc("POST    /api/subscriptions",               handlers.LoggingMiddleware(handler.CreateSubscriptionHandler))
+	mux.HandleFunc("GET     /api/subscriptions/{id}",          handlers.LoggingMiddleware(handler.GetSubscriptionHandler))
+	mux.HandleFunc("PUT     /api/subscriptions/{id}",          handlers.LoggingMiddleware(handler.UpdateSubscriptionHandler))
+	mux.HandleFunc("DELETE  /api/subscriptions/{id}",          handlers.LoggingMiddleware(handler.DeleteSubscriptionHandler))
+	mux.HandleFunc("GET     /api/subscriptions",               handlers.LoggingMiddleware(handler.ListSubscriptionsHandler))
+	mux.HandleFunc("GET     /api/subscriptions/total-cost",    handlers.LoggingMiddleware(handler.GetTotalCostHandler))
 	mux.HandleFunc("GET     /swagger/",                        httpSwagger.WrapHandler)
 	// 8. Получаем порт из .env
 	port := os.Getenv("SERVER_PORT")
@@ -128,11 +130,3 @@ logger.Info("Shutting down server...")
    logger.Info("Server exited properly")
 }
 
-func runMigrations() error {
-	migrationSQL, err := os.ReadFile("migrations/000001_create_subscriptions_table.up.sql")
-	if err != nil {
-		return err
-	}
-	_, err = database.DB.Exec(string(migrationSQL))
-	return err
-}

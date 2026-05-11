@@ -5,22 +5,19 @@
 # -----------------------------------------------------------------------------
 # СТАДИЯ 1: base_image (сборка приложения)
 # -----------------------------------------------------------------------------
-# Базовый образ: Go 1.25 на Alpine Linux
 FROM golang:1.25-alpine AS base_image
 
-# Устанавливаем рабочую директорию внутри контейнера
 WORKDIR /app
 
-# Копируем файлы модулей для кеширования
+# Копируем файлы модулей
 COPY go.mod go.sum ./
 
-# Скачиваем зависимости (опционально: go mod tidy для чистоты)
 RUN go mod download && go mod tidy
 
-# Копируем ВЕСЬ проект
+# Копируем весь проект
 COPY . .
 
-# Компилируем статический бинарник: точка входа — cmd/api/main.go
+# Компилируем бинарник
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /subscription_app ./cmd/api/main.go
 
 # -----------------------------------------------------------------------------
@@ -28,12 +25,15 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /subscription_app ./cmd/ap
 # -----------------------------------------------------------------------------
 FROM alpine:latest
 
-# Копируем бинарник и папки с миграциями/Swagger в alpine:latest
+# Копируем бинарник
 COPY --from=base_image /subscription_app /subscription_app
+
+# Копируем миграции и документацию
 COPY --from=base_image /app/migrations ./migrations
 COPY --from=base_image /app/docs ./docs
 
-# Порт API (из .env. По умолчанию 8080)
+# Копируем .env в корень (где запускается бинарник)
+COPY --from=base_image /app/.env /.env
 
 # Запуск приложения
 CMD ["/subscription_app"]
