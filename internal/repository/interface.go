@@ -8,10 +8,10 @@ import (
 
 // SubscriptionRepository - список всех методов для работы с БД
 type SubscriptionRepository interface {
-    CreateMtd(ctx context.Context, sub models.Subscription) (int, error)
-    GetByIDMtd(ctx context.Context, id int) (*models.Subscription, error)
-    UpdateMtd(ctx context.Context, sub models.Subscription) error
-    DeleteMtd(ctx context.Context, id int) error
-    ListMtd(ctx context.Context, limit, offset int) ([]models.Subscription, error)
-    GetTotalCostMtd(ctx context.Context, userID, serviceName, startDate, endDate string) (int, error)
+    CreateSubscription(ctx context.Context, sub models.Subscription) (int, error)
+    GetSubscriptionByID(ctx context.Context, id int) (*models.Subscription, error)
+    UpdateSubscription(ctx context.Context, sub models.Subscription) error
+    DeleteSubscription(ctx context.Context, id int) error
+    ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error)
+    GetTotalCost(ctx context.Context, userID, serviceName, startDate, endDate string) (int, error)
 }
