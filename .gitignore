@@ -27,6 +27,7 @@
 
 # Logs
 *.log
+!app.log
 logs/
 
 # Docker
