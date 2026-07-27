@@ -20,7 +20,7 @@ services:
 
     container_name: subscription-api                 # имя контейнера
     restart: unless-stopped                          # перезапускать, если не был вручную остановлен
-    deploy:                            # <-- добавить сюда
+    deploy:                           
       resources:
         limits:
           memory: 1G       
@@ -36,7 +36,7 @@ services:
       - "8080:8080"                                  # задаём порты
     depends_on:
       db:
-        condition: service_healthy                   # построение Docker зависит от service_healthy из БД
+        condition: service_healthy                    # контейнер server запустится только после того, как БД станет healthy
     networks:
       - app-network                                  # внутренняя сеть для общения с БД
 
@@ -53,9 +53,7 @@ services:
           memory: 1G      
           cpus: '1.0'     
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}   # пользователь БД (по умолчанию postgres)
-      POSTGRES_HOST_AUTH_METHOD: trust               # доверять авторизации (для локальной разработки)
-      # ⚠️ В продакшене замени trust на password и убедись, что пароль задан в .env
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}      # пользователь БД (по умолчанию postgres)
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}        # взять пароль из .env
       POSTGRES_DB: ${POSTGRES_DB}                    # взять имя БД из .env
     ports:

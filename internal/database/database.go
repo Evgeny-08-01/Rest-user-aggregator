@@ -33,17 +33,16 @@ func Init(databasePath string) error {
 
 // Close закрывает соединение с базой данных
 func Close() error {
-	if db == nil {
-		return nil
-	}
-	err := db.Close()
-		db = nil
-	if err != nil {
-		logger.Error("Failed to close database connection: %v", err)
-		return err
-	}
-	logger.Debug("Database connection closed")
-	return nil
+    if db == nil {
+        return nil
+    }
+    err := db.Close()
+    if err != nil {
+        logger.Error("Failed to close database connection: %v", err)
+        return err
+    }
+    logger.Debug("Database connection closed")
+    return nil
 }
 
 // PostgresRepo структура - реализует интерфейс SubscriptionRepository....и это структура, 

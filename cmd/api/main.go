@@ -15,6 +15,7 @@ import (
 	"fmt"
 
 	_ "github.com/Evgeny-08-01/Rest-user-agregator/docs"
+	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/handlers"
 	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
@@ -113,7 +114,8 @@ if databasePath == "" {
 }
 	err := database.Init(databasePath)                                                  // Подключение к БД
 	if err != nil {
-		 logger.Fatal("Failed to connect to database: %v", err) 
+		  logger.Warn("DB_PATH not set")
+		  return fmt.Errorf("DB_PATH not set: %w",err)
 	}
 	 return nil 
 }
@@ -131,8 +133,8 @@ func startServer() error {
 	repo := database.NewPostgresRepo()      // экземпляр репозитория, содержащий пул соединений и указатель на БД,
 	                                        //  содержит методы работы с БД. NewPostgresRepo-конструктор над PostgresRepo
 											// PostgresRepo- структура и содежит поле: db *sql.DB 
-
-    handler := handlers.NewHandler(repo)    // экземпляр хендлера, содержащий экземпляр репозитория repo для работы с БД,
+svc := service.NewSubscriptionService(repo)
+handler := handlers.NewHandler(repo, svc)   // экземпляр хендлера, содержащий экземпляр репозитория repo для работы с БД,
                                             // содержит методы обработки HTTP-запросов.
                                             // NewHandler — конструктор, создающий экземпляр Handler.
                                             // Handler — структура с полем Repo(тип интерфейс) repository.SubscriptionRepository(интерфейс).

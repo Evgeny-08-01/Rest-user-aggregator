@@ -1,10 +1,9 @@
 package database
 
-// Файл database_CRUDL_func-файл с функциями CRUDL
+// Файл database_CRUDL_func-файл с методами CRUDL
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -12,35 +11,30 @@ import (
 	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
 )
 
-// CreateSubscription : 1 Метод== добавляет подписку в конец БД и ******** Create
+// CreateSubscription : 1 Метод== добавляет подписку в конец БД
 // возвращает id+error
-func (r *PostgresRepo) CreateSubscription(ctx context.Context, sub models.Subscription) (int, error)  {
-	var id int
-	query := `INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date) VALUES ($1,$2,$3,$4,$5) RETURNING id`
-	startDate, err := time.Parse("01-2006", sub.StartDate)
-	 if err != nil {
-		    logger.Warn("CreateSubscription: failed to parse start_date %s: %v", sub.StartDate, err)
-		return 0, err
-		}
-	var  endDate *time.Time
-		if sub.EndDate != "" {
-	 tempVar, err := time.Parse("01-2006", sub.EndDate)
-	 if err != nil {
-		 logger.Warn("CreateSubscription: failed to parse end_date %s: %v", sub.EndDate, err)
-		return 0, err
-		} 
-		endDate = &tempVar}
-	err = r.db.QueryRowContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDate, endDate).Scan(&id)
-if err != nil {
-    logger.Error("CreateSubscription: failed to insert subscription (service=%s, user_id=%s): %v", 
-               sub.ServiceName, sub.UserID, err)
-    return 0, err
-}
-logger.Debug("CreateSubscription: successfully created subscription id=%d for user_id=%s, service=%s", 
-           id, sub.UserID, sub.ServiceName)
-	return id, err
-}
+func (r *PostgresRepo) CreateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
+    var id int
+    query := `INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date) VALUES ($1,$2,$3,$4,$5) RETURNING id`
 
+    err := r.db.QueryRowContext(ctx, query,
+        sub.ServiceName,
+        sub.Price,
+        sub.UserID,
+        startDate,
+        endDate,
+    ).Scan(&id)
+
+    if err != nil {
+        logger.Error("CreateSubscription: failed to insert subscription (service=%s, user_id=%s): %v",
+            sub.ServiceName, sub.UserID, err)
+        return 0, err
+    }
+
+    logger.Debug("CreateSubscription: successfully created subscription id=%d for user_id=%s, service=%s",
+        id, sub.UserID, sub.ServiceName)
+    return id, nil
+}
 // GetSubscriptionByID : 2 Метод==  получение подписки по ID***************** Read
 func (r *PostgresRepo) GetSubscriptionByID(ctx context.Context,id int) (*models.Subscription, error) {
 	query := `SELECT id, service_name, price, user_id, start_date, end_date  FROM subscriptions WHERE id = $1`
@@ -67,38 +61,36 @@ logger.Debug("GetSubscriptionByID: successfully retrieved subscription id=%d for
 }
 
 
-// UpdateSubscription : 3 Метод== - обновление подписки*********************** Update
-func (r *PostgresRepo) UpdateSubscription(ctx context.Context,sub models.Subscription) error {
-  startDateDB, err := time.Parse("01-2006", sub.StartDate)
-	 if err != nil {
-		 logger.Warn("UpdateSubscription: failed to parse start_date %s: %v", sub.StartDate, err)
-		return err
-		}
-	var  endDateDB *time.Time
-		if sub.EndDate != "" {
-	 tempVar, err := time.Parse("01-2006", sub.EndDate)
-	 if err != nil {
-		 logger.Warn("UpdateSubscription: failed to parse end_date %s: %v", sub.EndDate, err)
-		return err
-		} 
-		endDateDB = &tempVar}
+// UpdateSubscription : 3 Метод== обновление подписки
+// Принимает уже готовые startDate и endDate (time.Time)
+func (r *PostgresRepo) UpdateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
     query := `UPDATE subscriptions SET service_name = $1, price = $2, user_id = $3,
               start_date = $4, end_date = $5 WHERE id = $6`
-    result, err := r.db.ExecContext(ctx,query, sub.ServiceName, sub.Price, sub.UserID, startDateDB, endDateDB, sub.ID)
+
+    result, err := r.db.ExecContext(ctx, query,
+        sub.ServiceName,
+        sub.Price,
+        sub.UserID,
+        startDate,
+        endDate,
+        sub.ID,
+    )
     if err != nil {
-		 logger.Error("UpdateSubscription: exec failed for id %d: %v", sub.ID, err)
+        logger.Error("UpdateSubscription: exec failed for id %d: %v", sub.ID, err)
         return err
     }
+
     rowsAffected, err := result.RowsAffected()
     if err != nil {
-		 logger.Error("UpdateSubscription: RowsAffected failed for id %d: %v", sub.ID, err)
+        logger.Error("UpdateSubscription: RowsAffected failed for id %d: %v", sub.ID, err)
         return err
     }
     if rowsAffected == 0 {
-		   logger.Warn("UpdateSubscription: no rows affected for id %d", sub.ID)
+        logger.Warn("UpdateSubscription: no rows affected for id %d", sub.ID)
         return sql.ErrNoRows
     }
-	  logger.Debug("UpdateSubscription: successfully updated subscription id %d", sub.ID)
+
+    logger.Debug("UpdateSubscription: successfully updated subscription id %d", sub.ID)
     return nil
 }
 // DeleteSubscription : 4 Метод== -  удаляет подписку по ID     *************** Delete
@@ -169,34 +161,11 @@ if endDate.Valid {
 }
 
 // GetTotalCost -: 6 Метод возвращает суммарную стоимость подписок за период с фильтрацией
-func (r *PostgresRepo) GetTotalCost(ctx context.Context,userID, serviceName, startDate, endDate string) (int, error) {
+func (r *PostgresRepo) GetTotalCost(ctx context.Context,userID, serviceName string, startDate, endDate time.Time ) (int, error) {
 // startDate-стартовая дата, endDate-конечная дата просчитываемого периода, 
 // указанного в задании на расчет- обязательные поля!!!
 // startDateTimeDB-начало подписки, взятое из базы данных-обязательное поле
 // endDateTimeDB-конец подписки, взятое из базы данных- не обязательное поле
-
-startDateTimeDB, err := time.Parse("01-2006", startDate)
-	 if err != nil {
-		logger.Warn("GetTotalCost: failed to parse startDate %s: %v", startDate, err)
-		return 0, fmt.Errorf("invalid startDate: %w", err)// startDate обязательное поле
-		}
-		var endDateTimeDB time.Time
-		if endDate!="" {
-			 tempVar, err2 := time.Parse("01-2006", endDate)
-	 if err2 != nil {
-		 logger.Warn("GetTotalCost: failed to parse endDate %s: %v", endDate, err2)
-		return 0, fmt.Errorf("invalid endDate: %w", err)// endDate передан, но не соответствует формату MM-YYYY
-		} 	
-		endDateTimeDB = tempVar	
-endDateTimeDB = time.Date(tempVar.Year(), tempVar.Month()+1, 0, 0, 0, 0, 0, time.UTC)// Превращаем первый день в последний			
-	} else {
-//    endDateTimeDB,_ = time.Parse("2006-01", "2100-01")// присваиваем максимальное время, если данных нет в базе
-endDateTimeDB = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
-}
-if startDateTimeDB.After(endDateTimeDB) {
-	 logger.Warn("GetTotalCost: invalid date range: startDate=%s > endDate=%s", startDate, endDate)
-    return 0, fmt.Errorf( "start_date > end_date")
-}
 	    query := `
         SELECT COALESCE
 		(SUM
@@ -209,7 +178,7 @@ if startDateTimeDB.After(endDateTimeDB) {
 		 0) AS total
                       FROM subscriptions WHERE start_date <= $2 AND (end_date IS NULL OR end_date >= $1)`
 
-    args := []interface{}{startDateTimeDB, endDateTimeDB }
+    args := []interface{}{startDate, endDate }
 
     if userID != "" {
         query += " AND user_id = $" + strconv.Itoa(len(args)+1)
@@ -221,7 +190,7 @@ if startDateTimeDB.After(endDateTimeDB) {
     }
 
     var total int
-    err = r.db.QueryRowContext(ctx,query, args...).Scan(&total)
+    err := r.db.QueryRowContext(ctx,query, args...).Scan(&total)
   if err != nil {
         logger.Error("GetTotalCost: query failed with userID=%s, serviceName=%s, startDate=%s, endDate=%s: %v", 
                    userID, serviceName, startDate, endDate, err)

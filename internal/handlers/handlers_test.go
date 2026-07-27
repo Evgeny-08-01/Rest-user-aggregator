@@ -1,8 +1,10 @@
 // internal/handlers/handlers_test.go
+// ИНТЕГРАЦИОНННЫЕ И ЮНИТ ТЕСТЫ
 package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,15 +12,18 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/database"
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
+	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
+	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
 	"github.com/joho/godotenv"
 )
 
 func TestMain(m *testing.M) {
-	godotenv.Load("../.env")
-
+//	godotenv.Load("../.env")
+godotenv.Load("../../.env.test") 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
 		dbPath = "postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable"
@@ -54,11 +59,12 @@ _, err = db.Exec("TRUNCATE subscriptions RESTART IDENTITY")
 }
 
 // Создаёт handler для тестов (один раз, но можно и в каждом тесте)
-func setupTestHandler() *Handler {
-	repo := database.NewPostgresRepo()
-	return NewHandler(repo)
-}
 
+func setupTestHandler() *Handler {
+    repo := database.NewPostgresRepo()
+    svc := service.NewSubscriptionService(repo)   // ← создаём сервис
+    return NewHandler(repo, svc)                  // ← передаём оба
+}
 func TestCreateSubscriptionHandler(t *testing.T) {
 	handler := setupTestHandler()
 
@@ -546,5 +552,204 @@ func TestIsValidDate(t *testing.T) {
                 t.Errorf("isValidDate(%q) = %v, want %v", tt.date, result, tt.valid)
             }
         })
+    }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////
+////////                                  МОКИ                                      /////////
+/////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//МОК ДЛЯ ФУНКЦИИ CREATE
+func TestCreate_Mock(t *testing.T) {
+    // 1. Создаём мок-репозиторий
+    mockRepo := &repository.MockSubRepo{}
+
+    // 2. Настраиваем поведение мока для успешного создания
+    mockRepo.CreateMock = func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
+        // Здесь мы имитируем успешное создание подписки
+        // Возвращаем id=1 и nil (без ошибки)
+        return 1, nil
+    }
+
+    // 3. Создаём хендлер с моком (вместо реальной БД)
+    svc := service.NewSubscriptionService(mockRepo)
+    handler := NewHandler(mockRepo, svc)
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{"success", `{"service_name":"Test","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusCreated},
+		{"empty service_name", `{"service_name":"","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusBadRequest},
+		{"negative price", `{"service_name":"Test","price":-10,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusBadRequest},
+		{"empty user_id", `{"service_name":"Test","price":100,"user_id":"","start_date":"07-2025"}`, http.StatusBadRequest},
+		{"invalid date", `{"service_name":"Test","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"2025-07"}`, http.StatusBadRequest},
+		{"invalid JSON", `{"service_name":}`, http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(tt.body)))
+			w := httptest.NewRecorder()
+			handler.CreateSubscriptionHandler(w, req)
+			if w.Code != tt.wantStatus {
+				t.Errorf("got %d, want %d", w.Code, tt.wantStatus)
+			}
+		})
+	}
+}
+
+//МОК ДЛЯ ФУНКЦИИ GET  (получение по ID) 
+func TestGet_Mock(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.GetSubByIDMock = func(ctx context.Context, id int) (*models.Subscription, error) {
+        if id == 1 {  // ← только для id=1 возвращаем подписку
+            return &models.Subscription{
+                ID:          1,
+                ServiceName: "Test Service",
+                Price:       100,
+                UserID:      "550e8400-e29b-41d4-a716-446655440000",
+                StartDate:   "07-2025",
+                EndDate:     "",
+            }, nil
+        }
+        return nil, nil  // ← для всех остальных — not found
+    }
+    handler := NewHandler(mockRepo, nil)
+
+    tests := []struct {
+        name       string
+        id         string
+        wantStatus int
+    }{
+        {"success", "1", http.StatusOK},
+        {"not found", "99999", http.StatusNotFound},
+        {"invalid id", "abc", http.StatusBadRequest},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            req := httptest.NewRequest("GET", "/api/subscriptions/"+tt.id, nil)
+            req.SetPathValue("id", tt.id)
+            w := httptest.NewRecorder()
+            handler.GetSubscriptionHandler(w, req)
+            if w.Code != tt.wantStatus {
+                t.Errorf("got %d, want %d", w.Code, tt.wantStatus)
+            }
+        })
+    }
+}
+
+//МОК для Update (обновление)
+func TestUpdate_Mock(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.UpdateSubMock = func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
+        return nil // всегда успех
+    }
+    svc := service.NewSubscriptionService(mockRepo)
+    handler := NewHandler(mockRepo, svc)
+
+    tests := []struct {
+        name       string
+        id         string
+        body       string
+        wantStatus int
+    }{
+        {"success", "1", `{"service_name":"Updated","price":200,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"08-2025","end_date":"12-2025"}`, http.StatusOK},
+        {"invalid id", "abc", `{"service_name":"Test","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusBadRequest},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            req := httptest.NewRequest("PUT", "/api/subscriptions/"+tt.id, bytes.NewReader([]byte(tt.body)))
+            req.SetPathValue("id", tt.id)
+            w := httptest.NewRecorder()
+            handler.UpdateSubscriptionHandler(w, req)
+            if w.Code != tt.wantStatus {
+                t.Errorf("got %d, want %d", w.Code, tt.wantStatus)
+            }
+        })
+    }
+}
+
+// МОК для Delete (удаление)
+func TestDelete_Mock(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.DeleteSubMock = func(ctx context.Context, id int) error {
+        return nil // всегда успех
+    }
+    svc := service.NewSubscriptionService(mockRepo)
+    handler := NewHandler(mockRepo, svc)
+
+    tests := []struct {
+        name       string
+        id         string
+        wantStatus int
+    }{
+        {"success", "1", http.StatusOK},
+        {"invalid id", "abc", http.StatusBadRequest},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            req := httptest.NewRequest("DELETE", "/api/subscriptions/"+tt.id, nil)
+            req.SetPathValue("id", tt.id)
+            w := httptest.NewRecorder()
+            handler.DeleteSubscriptionHandler(w, req)
+            if w.Code != tt.wantStatus {
+                t.Errorf("got %d, want %d", w.Code, tt.wantStatus)
+            }
+        })
+    }
+}
+
+//МОК для List (список)
+func TestList_Mock(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.ListSubMock = func(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+        return []models.Subscription{
+            {ID: 1, ServiceName: "Test1", Price: 100, UserID: "550e8400-e29b-41d4-a716-446655440000", StartDate: "07-2025"},
+            {ID: 2, ServiceName: "Test2", Price: 200, UserID: "550e8400-e29b-41d4-a716-446655440000", StartDate: "08-2025"},
+        }, nil
+    }
+    handler := NewHandler(mockRepo, nil)
+
+    req := httptest.NewRequest("GET", "/api/subscriptions?limit=10&offset=0", nil)
+    w := httptest.NewRecorder()
+    handler.ListSubscriptionsHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Errorf("got %d, want %d", w.Code, http.StatusOK)
+    }
+
+    var list []models.Subscription
+    json.NewDecoder(w.Body).Decode(&list)
+    if len(list) != 2 {
+        t.Errorf("expected 2, got %d", len(list))
+    }
+}
+//МОК TotalCost (суммарная стоимость)
+func TestTotalCost_Mock(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.GetTotalCostMock = func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
+        return 1000, nil
+    }
+
+    svc := service.NewSubscriptionService(mockRepo)
+    handler := NewHandler(mockRepo, svc)
+
+    req := httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id=test&start_date=01-2025&end_date=12-2025", nil)
+    w := httptest.NewRecorder()
+    handler.GetTotalCostHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Errorf("got %d, want %d", w.Code, http.StatusOK)
+    }
+
+    var resp map[string]int
+    json.NewDecoder(w.Body).Decode(&resp)
+    if resp["total"] != 1000 {
+        t.Errorf("expected 1000, got %d", resp["total"])
     }
 }

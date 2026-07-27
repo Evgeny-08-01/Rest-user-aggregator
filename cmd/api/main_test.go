@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 // ============================================================
 func loadTestEnv() error {
 	// Загружаем ТОЛЬКО .env.test — если его нет, тест пропускается
-	err := godotenv.Load("../.env.test")
+	err := godotenv.Load("../../.env.test")
 	if err != nil {
 		return err
 	}
@@ -23,10 +24,9 @@ func loadTestEnv() error {
 // ТЕСТ ДЛЯ initDB()
 // ============================================================
 func TestInitDB(t *testing.T) {
-	// Загружаем .env.test
-	if err := loadTestEnv(); err != nil {
-		t.Skip("Skipping test: .env.test not found")
-	}
+    if err := loadTestEnv(); err != nil {
+        t.Skip("Skipping test: .env.test not found")
+    }
 
 	// Сохраняем оригинальное значение DB_PATH
 	originalDBPath := os.Getenv("DB_PATH")
@@ -37,8 +37,10 @@ func TestInitDB(t *testing.T) {
 	os.Setenv("DB_PATH", "invalid")
 	err := initDB()
 	if err == nil {
-       t.Fatal("expected error for invalid DB_PATH, got nil")
+		fmt.Println("111")
+			      t.Fatal("expected error for invalid DB_PATH, got nil")
 	}
+	fmt.Println("222")
 	t.Log("Variant 1 passed: invalid path returned error")
 
     
@@ -46,6 +48,7 @@ func TestInitDB(t *testing.T) {
     os.Setenv("DB_PATH", originalDBPath)
     err = initDB()
     if err != nil {
+		fmt.Println("333")
         t.Fatalf("database not running: %v", err)
     }
 }

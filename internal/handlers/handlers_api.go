@@ -8,17 +8,19 @@ import (
 
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
+	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
 	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
 )
 
 // Handler - структура хендлера, принимающая репозиторий
 type Handler struct {
     Repo repository.SubscriptionRepository // Repo-интерфейс, содержит все методы для работы с БД
+	Service *service.SubscriptionService
 }
 
 // NewHandler - конструктор хендлера
-func NewHandler(repo repository.SubscriptionRepository) *Handler {
-    return &Handler{Repo: repo}
+func NewHandler(repo repository.SubscriptionRepository, svc *service.SubscriptionService) *Handler {
+    return &Handler{Repo: repo, Service: svc}
 }
 // @Summary      Создать подписку
 // @Description  Добавляет новую подписку в базу данных
@@ -50,8 +52,8 @@ func (h *Handler) CreateSubscriptionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}	
 
-	// 3. Вызвать функцию database.CreateSubscription-создаем запись в базе данных
-	id, err := h.Repo.CreateSubscription(ctx,req)
+	// 3. Вызвать метод database.CreateSubscription-создаем запись в базе данных
+    id, err := h.Service.CreateSubscription(ctx, req)
 	if err != nil {
 		logger.Error("CreateSubscriptionHandler: database error for user_id=%s, service=%s: %v",
 			req.UserID, req.ServiceName, err)
@@ -141,7 +143,7 @@ func (h *Handler) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// 4.  Вызвать database.UpdateSubscription
-	err = h.Repo.UpdateSubscription(ctx,req)
+	err = h.Service.UpdateSubscription(ctx,req)
 if err != nil {
     if err == sql.ErrNoRows {
 	logger.Warn("UpdateSubscriptionHandler: subscription not found for id=%d", id)
@@ -278,7 +280,7 @@ func (h *Handler)GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
 		userID, serviceName, startDate, endDate)
 
 	//  2. Вызвать database.GetTotalCost
-total, err := h.Repo.GetTotalCost(ctx,userID, serviceName, startDate, endDate)
+total, err := h.Service.GetTotalCost(ctx, userID, serviceName, startDate, endDate)
 if err != nil {
     if err.Error() == "start_date > end_date" {
 	logger.Warn("GetTotalCostHandler: invalid date range - start_date=%s, end_date=%s", startDate, endDate)
