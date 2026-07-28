@@ -116,18 +116,18 @@ go run cmd/api/main.go
 ### Healthcheck
 Для проверки работоспособности сервиса доступен отдельный эндпоинт:
 
-```json
+
 GET /health
-```
+
 Ответ:
-```json
+
 {"status":"ok"}
 
 ## Примеры запросов
 
 ### Создание подписки
 
-```json
+
 POST /api/subscriptions
 {
     "service_name": "Yandex Plus",
@@ -135,19 +135,19 @@ POST /api/subscriptions
     "user_id": "60601fee-2bf1-4721-ae6f-7636e79a0cba",
     "start_date": "07-2025"
 }
-```
+
 
 Ответ:
-```json
+
 {
     "id": 1
 }
-```
+
 ### Получение суммарной стоимости
 
-```json
+
 GET /api/subscriptions/total-cost?user_id=60601fee-2bf1-4721-ae6f-7636e79a0cba&start_date=01-2025&end_date=12-2025
-```
+
 
 Ответ:
 ```json
