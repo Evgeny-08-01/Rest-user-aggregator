@@ -7,20 +7,18 @@ import (
 	"strconv"
 
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
 	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
 )
 
 // Handler - структура хендлера, принимающая репозиторий
 type Handler struct {
-    Repo repository.SubscriptionRepository // Repo-интерфейс, содержит все методы для работы с БД
-	Service *service.SubscriptionService
+    Service *service.SubscriptionService
 }
 
 // NewHandler - конструктор хендлера
-func NewHandler(repo repository.SubscriptionRepository, svc *service.SubscriptionService) *Handler {
-    return &Handler{Repo: repo, Service: svc}
+func NewHandler(svc *service.SubscriptionService) *Handler {
+    return &Handler{Service: svc}
 }
 // @Summary      Создать подписку
 // @Description  Добавляет новую подписку в базу данных
@@ -76,32 +74,40 @@ func (h *Handler) CreateSubscriptionHandler(w http.ResponseWriter, r *http.Reque
 // @Failure      404  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router       /subscriptions/{id} [get]
-// 2. GetSubscriptionHandler-Хэндлер чтения одной строки
+// GetSubscriptionHandler - хэндлер получения подписки по ID
+// Логика:
+//   1. Извлекает ID из URL-пути
+//   2. Валидирует ID (должен быть целым положительным числом)
+//   3. Вызывает сервис для получения подписки из БД
+//   4. Возвращает подписку в JSON или ошибку с соответствующим HTTP-статусом
 func (h *Handler) GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	// 1. Получить id
-	idStr := r.PathValue("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		logger.Warn("GetSubscriptionHandler: invalid ID format: %s", idStr)
-		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
-		return
-	}
-	// 2. Вызвать database.GetSubscription
-	sub, err := h.Repo.GetSubscriptionByID(ctx,id)
-	if err != nil {
-		logger.Error("GetSubscriptionHandler: database error for id=%d: %v", id, err)
-		writeJSONError(w, http.StatusInternalServerError, "Database error")
-		return
-	}
-	if sub == nil {
-		logger.Warn("GetSubscriptionHandler: subscription not found for id=%d", id)
-		writeJSONError(w, http.StatusNotFound, "Subscription not found")
-		return
-	}
-	// 3. Ответ	
-	logger.Debug("GetSubscriptionHandler: successfully retrieved subscription id=%d", id)
-	writeJSON(w, http.StatusOK, sub)
+    ctx := r.Context()
+    
+    // 1. Получить id из URL
+    idStr := r.PathValue("id")
+    id, err := strconv.Atoi(idStr)
+    if err != nil {
+        logger.Warn("GetSubscriptionHandler: invalid ID format: %s", idStr)
+        writeJSONError(w, http.StatusBadRequest, "Invalid ID")
+        return
+    }
+
+    // 2. Вызвать сервис для получения подписки
+    sub, err := h.Service.GetSubscriptionByID(ctx, id)
+    if err != nil {
+        logger.Error("GetSubscriptionHandler: database error for id=%d: %v", id, err)
+        writeJSONError(w, http.StatusInternalServerError, "Database error")
+        return
+    }
+    if sub == nil {
+        logger.Warn("GetSubscriptionHandler: subscription not found for id=%d", id)
+        writeJSONError(w, http.StatusNotFound, "Subscription not found")
+        return
+    }
+
+    // 3. Ответ
+    logger.Debug("GetSubscriptionHandler: successfully retrieved subscription id=%d", id)
+    writeJSON(w, http.StatusOK, sub)
 }
 // @Summary     Хэндлер обновления одной строки
 // @Tags        subscriptions
@@ -169,34 +175,40 @@ if err != nil {
 // @Failure      404  {object}  map[string]string 
 // @Failure      500 {object} map[string]string
 // @Router       /subscriptions/{id} [delete]
-// 4. DeleteSubscriptionHandler-Хэндлер удаления строки по id
-func (h *Handler)DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	// 1. Получить id
-	idStr := r.PathValue("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		logger.Warn("DeleteSubscriptionHandler: invalid ID format: %s", idStr)
-		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
-		return
-	}
-
-	// 2. Вызвать database.DeleteSubscription
-
-	err = h.Repo.DeleteSubscription(ctx,id)
-if err != nil {
-    if err == sql.ErrNoRows {
-		logger.Warn("DeleteSubscriptionHandler: subscription not found for id=%d", id)
-        writeJSONError(w, http.StatusNotFound, "Subscription not found")
-    } else {
-		logger.Error("DeleteSubscriptionHandler: database error for id=%d: %v", id, err)
-        writeJSONError(w, http.StatusInternalServerError, "Database error")
+// DeleteSubscriptionHandler - хэндлер удаления подписки по ID
+// Логика:
+//   1. Извлекает ID из URL-пути
+//   2. Валидирует ID (должен быть целым положительным числом)
+//   3. Вызывает сервис для удаления подписки из БД
+//   4. Возвращает статус операции или ошибку с соответствующим HTTP-статусом
+func (h *Handler) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+    
+    // 1. Получить id из URL
+    idStr := r.PathValue("id")
+    id, err := strconv.Atoi(idStr)
+    if err != nil {
+        logger.Warn("DeleteSubscriptionHandler: invalid ID format: %s", idStr)
+        writeJSONError(w, http.StatusBadRequest, "Invalid ID")
+        return
     }
-    return
-}
-		// 3. Ответ
-	logger.Debug("DeleteSubscriptionHandler: successfully deleted subscription id=%d", id)
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+
+    // 2. Вызвать сервис для удаления подписки
+    err = h.Service.DeleteSubscription(ctx, id)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            logger.Warn("DeleteSubscriptionHandler: subscription not found for id=%d", id)
+            writeJSONError(w, http.StatusNotFound, "Subscription not found")
+        } else {
+            logger.Error("DeleteSubscriptionHandler: database error for id=%d: %v", id, err)
+            writeJSONError(w, http.StatusInternalServerError, "Database error")
+        }
+        return
+    }
+
+    // 3. Ответ
+    logger.Debug("DeleteSubscriptionHandler: successfully deleted subscription id=%d", id)
+    writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // @Summary      Хэндлер чтения всех строк по фильтру
@@ -209,51 +221,60 @@ if err != nil {
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router        /subscriptions [get]
-// 5. ListSubscriptionsHandler-Хэндлер чтения всех строк по фильтру
-func (h *Handler)ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	// 1. Валидация
-	// Получить параметры limit и offset из URL(если их нет,то предустановка в программе)
-	limit := 20
-	offset := 0
-	limitStr := r.URL.Query().Get("limit")
-	if limitStr != "" {
-		parsed, err := strconv.Atoi(limitStr)
-		if err != nil {
-		logger.Warn("ListSubscriptionsHandler: invalid limit value: %s", limitStr)
-			writeJSONError(w, http.StatusBadRequest, "Invalid limit")
-			return
-		}
-		if parsed > 0 {
-			limit = parsed
-		}
-	}
-	offsetStr := r.URL.Query().Get("offset")
-if offsetStr != "" {
-    parsed, err := strconv.Atoi(offsetStr)
+// ListSubscriptionsHandler - хэндлер получения списка подписок с пагинацией
+// Логика:
+//   1. Извлекает параметры limit и offset из URL-запроса
+//   2. Валидирует параметры (limit > 0, offset >= 0)
+//   3. Вызывает сервис для получения списка подписок из БД
+//   4. Возвращает список подписок в JSON или ошибку с соответствующим HTTP-статусом
+func (h *Handler) ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+    
+    // 1. Валидация параметров
+    limit := 20 // значение по умолчанию
+    offset := 0 // значение по умолчанию
+    
+    limitStr := r.URL.Query().Get("limit")
+    if limitStr != "" {
+        parsed, err := strconv.Atoi(limitStr)
+        if err != nil {
+            logger.Warn("ListSubscriptionsHandler: invalid limit value: %s", limitStr)
+            writeJSONError(w, http.StatusBadRequest, "Invalid limit")
+            return
+        }
+        if parsed > 0 {
+            limit = parsed
+        }
+    }
+    
+    offsetStr := r.URL.Query().Get("offset")
+    if offsetStr != "" {
+        parsed, err := strconv.Atoi(offsetStr)
+        if err != nil {
+            logger.Warn("ListSubscriptionsHandler: invalid offset value: %s", offsetStr)
+            writeJSONError(w, http.StatusBadRequest, "Invalid offset")
+            return
+        }
+        if parsed < 0 {
+            logger.Warn("ListSubscriptionsHandler: negative offset: %d", parsed)
+            writeJSONError(w, http.StatusBadRequest, "Negative offset")
+            return
+        }
+        offset = parsed
+    }
+
+    // 2. Вызвать сервис для получения списка подписок
+    list, err := h.Service.ListSubscriptions(ctx, limit, offset)
     if err != nil {
-	logger.Warn("ListSubscriptionsHandler: invalid offset value: %s", offsetStr)
-        writeJSONError(w, http.StatusBadRequest, "Invalid offset")
+        logger.Error("ListSubscriptionsHandler: database error (limit=%d, offset=%d): %v", limit, offset, err)
+        writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
         return
     }
-    if parsed < 0 {
-		logger.Warn("ListSubscriptionsHandler: negative offset: %d", parsed)
-        writeJSONError(w, http.StatusBadRequest, "Negative offset")
-        return
-    }
-    offset = parsed
-	}
-	// 2. Вызвать database.ListSubscriptions
-	list, err := h.Repo.ListSubscriptions(ctx,limit, offset)
-	if err != nil {
-		logger.Error("ListSubscriptionsHandler: database error (limit=%d, offset=%d): %v", limit, offset, err)
-		writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
-		return
-	}
-	// 3. Ответ	
-	logger.Debug("ListSubscriptionsHandler: successfully fetched %d subscriptions (limit=%d, offset=%d)",
-		len(list), limit, offset)
-	writeJSON(w, http.StatusOK, list)
+
+    // 3. Ответ
+    logger.Debug("ListSubscriptionsHandler: successfully fetched %d subscriptions (limit=%d, offset=%d)",
+        len(list), limit, offset)
+    writeJSON(w, http.StatusOK, list)
 }
 
 // @Summary      Хэндлер для подсчета суммарной стоимости всех подписок за выбранный период

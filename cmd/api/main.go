@@ -134,7 +134,7 @@ func startServer() error {
 	                                        //  содержит методы работы с БД. NewPostgresRepo-конструктор над PostgresRepo
 											// PostgresRepo- структура и содежит поле: db *sql.DB 
 svc := service.NewSubscriptionService(repo)
-handler := handlers.NewHandler(repo, svc)   // экземпляр хендлера, содержащий экземпляр репозитория repo для работы с БД,
+handler := handlers.NewHandler(svc)         // экземпляр хендлера, содержащий экземпляр репозитория repo для работы с БД,
                                             // содержит методы обработки HTTP-запросов.
                                             // NewHandler — конструктор, создающий экземпляр Handler.
                                             // Handler — структура с полем Repo(тип интерфейс) repository.SubscriptionRepository(интерфейс).

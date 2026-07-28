@@ -106,6 +106,5 @@ func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 // HealthHandler — хендлер для проверки работоспособности сервера (healthcheck)
 // Используется Docker для проверки, что сервер жив и отвечает на запросы- не требует подключения к БД
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+    writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

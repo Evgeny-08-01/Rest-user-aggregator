@@ -3,7 +3,7 @@ package database
 
 import (
 	"database/sql"
-
+	"errors"
 
 	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
 	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
@@ -68,4 +68,59 @@ func NewPostgresRepo() *PostgresRepo {
 // GetDB - для тестов возвращает соединение с БД
 func GetDB() *sql.DB {
     return db
+}
+// CreateTestTable создаёт таблицу для тестов (если её нет)
+func CreateTestTable() error {
+    if db == nil {
+        err := errors.New("database not initialized")
+        logger.Error("CreateTestTable: %v", err)
+        return err
+    }
+    _, err := db.Exec(`
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            id SERIAL PRIMARY KEY,
+            service_name VARCHAR(255) NOT NULL,
+            price INTEGER NOT NULL,
+            user_id UUID NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE
+        )
+    `)
+    if err != nil {
+        logger.Error("CreateTestTable: failed to create table: %v", err)
+        return err
+    }
+    logger.Debug("CreateTestTable: table created or already exists")
+    return nil
+}
+
+// CleanTestTable очищает таблицу перед тестами
+func CleanTestTable() error {
+    if db == nil {
+        err := errors.New("database not initialized")
+        logger.Error("CleanTestTable: %v", err)
+        return err
+    }
+    _, err := db.Exec("TRUNCATE subscriptions RESTART IDENTITY")
+    if err != nil {
+        logger.Error("CleanTestTable: failed to truncate table: %v", err)
+        return err
+    }
+    logger.Debug("CleanTestTable: table truncated successfully")
+    return nil
+}
+// DeleteSubscriptionsByUserID удаляет все подписки пользователя (для тестов)
+func DeleteSubscriptionsByUserID(userID string) error {
+    if db == nil {
+        err := errors.New("database not initialized")
+        logger.Error("DeleteSubscriptionsByUserID: %v", err)
+        return err
+    }
+    _, err := db.Exec("DELETE FROM subscriptions WHERE user_id = $1", userID)
+    if err != nil {
+        logger.Error("DeleteSubscriptionsByUserID: failed to delete for user_id=%s: %v", userID, err)
+        return err
+    }
+    logger.Debug("DeleteSubscriptionsByUserID: deleted subscriptions for user_id=%s", userID)
+    return nil
 }

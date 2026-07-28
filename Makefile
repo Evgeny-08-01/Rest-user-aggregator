@@ -2,8 +2,8 @@
 # MAKE FILE FOR REST USER AGREGATOR
 # ============================================================
 # Commands:
-#   make test-u        - Run unit tests (mocks, no DB) - fast
-#   make test-int      - Run integration tests (with DB) - starts DB automatically
+#   make test-u        - Run unit tests (tag: unit)
+#   make test-int      - Run integration tests (tag: integration) - starts DB
 #   make test-all      - Run unit tests first, then integration tests
 #   make run           - Run server locally
 #   make build         - Build binary
@@ -17,38 +17,34 @@
 
 # -------------------- TESTS --------------------
 
-# Unit tests (mocks, no DB) - runs only tests with "_Mock" suffix
+# Unit tests (tag: unit) - runs only tests with build tag "unit"
 test-u:
 	@echo "========================================="
-	@echo "  RUNNING UNIT TESTS (mocks, no DB)"
+	@echo "  RUNNING UNIT TESTS (tag: unit)"
 	@echo "========================================="
-	go test -run 'Test.*_Mock$$' ./... -v
+	go test ./internal/handlers -tags=unit -v
+	go test ./pkg/logger -v 
 
-# Integration tests (with DB) - runs tests with "Handler" suffix OR TestInitDB OR TestRun
+# Integration tests (tag: integration) - starts DB and waits (max 30s)
 test-int:
 	@echo "========================================="
-	@echo "  RUNNING INTEGRATION TESTS (with DB)"
+	@echo "  RUNNING INTEGRATION TESTS (tag: integration)"
 	@echo "========================================="
 	@echo "[RUN] Starting DB..."
 	docker-compose up -d db
 	@echo "[RUN] Waiting for DB to be ready (timeout: 30s)..."
-	@timeout=30; \
-	elapsed=0; \
-	while [ $$elapsed -lt $$timeout ]; do \
-		echo "SELECT 1" | docker exec -i subscription-db psql -U postgres -d subscriptions > /dev/null 2>&1; \
-		if [ $$? -eq 0 ]; then \
+	@for i in $$(seq 1 30); do \
+		if docker exec subscription-db pg_isready -U postgres; then \
 			echo "[RUN] DB is ready."; \
 			break; \
 		fi; \
 		sleep 1; \
-		elapsed=$$((elapsed + 1)); \
-		echo "[RUN] Waiting for DB... $$elapsed s"; \
-	done; \
-	if [ $$elapsed -ge $$timeout ]; then \
-		echo "[ERR] Timeout: DB did not start within 30 seconds."; \
-		exit 1; \
-	fi
-	go test -run 'Test.*Handler$$|TestInitDB|TestRun' ./... -v
+		if [ $$i -eq 30 ]; then \
+			echo "[ERR] Timeout: DB did not start within 30 seconds."; \
+			exit 1; \
+		fi; \
+	done
+	go test ./internal/handlers ./cmd/api -tags=integration -v
 
 # All tests: unit first, then integration
 test-all:
@@ -56,13 +52,7 @@ test-all:
 	@echo "  RUNNING ALL TESTS"
 	@echo "========================================="
 	$(MAKE) test-u && $(MAKE) test-int
-
-# -------------------- RUN --------------------
-
-# Run the server locally
-run:
-	@echo "[RUN] Starting server..."
-	go run cmd/api/main.go
+# -------------------- BUILD --------------------
 
 # Build the binary
 build:
@@ -86,6 +76,38 @@ docker-up-db:
 	@echo "[RUN] Starting DB..."
 	docker-compose up -d db
 
+# View logs from all containers
+docker-logs:
+	@echo "[RUN] Showing logs (Ctrl+C to exit)..."
+	docker-compose logs -f
+
+# View logs only from server
+docker-logs-server:
+	@echo "[RUN] Showing server logs (Ctrl+C to exit)..."
+	docker-compose logs -f server
+
+# -------------------- CLEAN --------------------
+
+# Clean all build artifacts (bin/, coverage/, cache)
+clean:
+	@echo "========================================="
+	@echo "  CLEANING BUILD ARTIFACTS"
+	@echo "========================================="
+	@echo "[RUN] Removing bin/..."
+	rm -rf bin/
+	@echo "[RUN] Removing coverage/..."
+	rm -rf coverage/
+	@echo "[RUN] Removing coverage files..."
+	rm -f coverage.out coverage.html
+	@echo "[RUN] Cleaning Go cache..."
+	go clean -cache
+	go clean -testcache
+	@echo "[RUN] Tidying go.mod..."
+	go mod tidy
+	@echo "========================================="
+	@echo "  CLEAN COMPLETE! 
+	@echo "========================================="
+
 # -------------------- HELP --------------------
 
 # Show all available commands
@@ -93,8 +115,8 @@ help:
 	@echo "========================================="
 	@echo "  AVAILABLE COMMANDS"
 	@echo "========================================="
-	@echo "  make test-u        - Unit tests (mocks, no DB) - fast"
-	@echo "  make test-int      - Integration tests (starts DB, waits 30s max)"
+	@echo "  make test-u        - Unit tests (tag: unit) - fast, no DB"
+	@echo "  make test-int      - Integration tests (tag: integration) - starts DB"
 	@echo "  make test-all      - Unit tests first, then integration"
 	@echo "  make run           - Run server locally"
 	@echo "  make build         - Build binary"

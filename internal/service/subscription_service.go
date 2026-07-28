@@ -102,7 +102,47 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models
 
     return s.repo.UpdateSubscription(ctx, sub, startDate, endDate)
 }
+// GetSubscriptionByID — бизнес-логика получения подписки по ID.
+// Параметры:
+//   - ctx: контекст для управления временем жизни запроса
+//   - id: идентификатор подписки (int)
+// Логика:
+//   1. Вызывает репозиторий для получения записи из БД
+//   2. Возвращает nil, nil если подписка не найдена
+// Возвращает:
+//   - *models.Subscription: структура с данными подписки (или nil, если не найдена)
+//   - error: ошибка, если запрос к БД не удался
+func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int) (*models.Subscription, error) {
+    return s.repo.GetSubscriptionByID(ctx, id)
+}
 
+// DeleteSubscription — бизнес-логика удаления подписки по ID.
+// Параметры:
+//   - ctx: контекст для управления временем жизни запроса
+//   - id: идентификатор подписки (int)
+// Логика:
+//   1. Вызывает репозиторий для удаления записи из БД
+//   2. Возвращает sql.ErrNoRows если подписка не найдена
+// Возвращает:
+//   - error: ошибка, если удаление не удалось или запись не найдена
+func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int) error {
+    return s.repo.DeleteSubscription(ctx, id)
+}
+
+// ListSubscriptions — бизнес-логика получения списка подписок с пагинацией.
+// Параметры:
+//   - ctx: контекст для управления временем жизни запроса
+//   - limit: максимальное количество записей (должен быть > 0)
+//   - offset: сдвиг от начала (должен быть >= 0)
+// Логика:
+//   1. Вызывает репозиторий для получения списка из БД
+//   2. Возвращает пустой слайс, если записи не найдены
+// Возвращает:
+//   - []models.Subscription: слайс подписок (может быть пустым)
+//   - error: ошибка, если запрос к БД не удался
+func (s *SubscriptionService) ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+    return s.repo.ListSubscriptions(ctx, limit, offset)
+}
 // ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПАРСИНГА ДАТ
 // ============================================================
