@@ -1,4 +1,4 @@
-module github.com/Evgeny-08-01/Rest-user-agregator
+module Rest-user-agregator
 
 go 1.23.4
 
@@ -23,3 +23,5 @@ require (
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
+
+replace Rest-user-agregator => ./

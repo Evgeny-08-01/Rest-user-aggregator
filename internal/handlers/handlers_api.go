@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
-	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/service"
+	"Rest-user-agregator/pkg/logger"
 )
 
 // Handler - структура хендлера, принимающая репозиторий

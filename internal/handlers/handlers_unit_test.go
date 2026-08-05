@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/repository"
+	"Rest-user-agregator/internal/service"
 )
 
 // ============================================================

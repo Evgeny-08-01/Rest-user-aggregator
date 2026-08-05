@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/models"
 )
 
 // SubscriptionRepository - список всех методов для работы с БД

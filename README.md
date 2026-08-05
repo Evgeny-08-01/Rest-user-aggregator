@@ -1,6 +1,6 @@
 # Rest User Agregator
 
-[![CI/CD](https://github.com/Evgeny-08-01/Rest-user-agregator/actions/workflows/workflows.yml/badge.svg)](https://github.com/Evgeny-08-01/Rest-user-agregator/actions)
+[![CI/CD](https://Rest-user-agregator/actions/workflows/workflows.yml/badge.svg)](https://Rest-user-agregator/actions)
 
 **📄 Техническое задание:** [Посмотреть ТЗ](./technical%20requirements/technical%20requirements.txt)
 

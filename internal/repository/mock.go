@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/models"
 )
 
 // MockSubRepo — фейковый репозиторий для тестов

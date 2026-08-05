@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
-	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/repository"
+	"Rest-user-agregator/pkg/logger"
 )
 type SubscriptionService struct {
     repo repository.SubscriptionRepository

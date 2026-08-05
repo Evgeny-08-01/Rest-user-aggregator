@@ -11,9 +11,9 @@ import (
 	"os"
 	"strconv"
 	"testing"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/database"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
+	"Rest-user-agregator/internal/database"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/service"
 	"github.com/joho/godotenv"
 )
 

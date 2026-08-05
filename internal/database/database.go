@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
-	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
+	"Rest-user-agregator/internal/repository"
+	"Rest-user-agregator/pkg/logger"
 	_ "github.com/lib/pq"
 )
 

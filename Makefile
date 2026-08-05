@@ -51,7 +51,28 @@ test-all:
 	@echo "========================================="
 	@echo "  RUNNING ALL TESTS"
 	@echo "========================================="
-	$(MAKE) test-u && $(MAKE) test-int
+	$(MAKE) test-u && $(MAKE) test-
+	
+# -------------------- RUN --------------------
+
+# Run the server locally with database
+run:
+	@echo "[RUN] Checking Docker..."
+	@if ! docker info > /dev/null 2>&1; then \
+		echo "========================================="; \
+		echo "  ❌ DOCKER IS NOT RUNNING"; \
+		echo "========================================="; \
+		echo "  Please start Docker Desktop manually:"; \
+		echo "  1. Find Docker Desktop in the Start menu"; \
+		echo "  2. Launch it"; \
+		echo "  3. Wait for the green dot in the system tray"; \
+		echo "  4. Run 'make run' again"; \
+		echo "========================================="; \
+		exit 1; \
+	fi
+	@$(MAKE) docker-up-db
+	@echo "[RUN] Starting server locally..."
+	go run cmd/api/main.go
 # -------------------- BUILD --------------------
 
 # Build the binary
