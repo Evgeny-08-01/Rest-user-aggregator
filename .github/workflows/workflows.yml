@@ -1,10 +1,12 @@
 name: rest-user-agregator                
 on:                                       # запуск по заливке кода в главную ветку
-  push:                                   # запуск по пушь 
-    branches: [main]                      # запуск по пушу  в главную ветку
-    tags: [v*]                            # запуск по созданию тега (v1.0.0 и т. п.)
-  pull_request:
-    branches: [main]
+  #push:                                   # запуск по пушь 
+   # branches:                             # запуск по любому пушув любую ветку
+   # tags: [v*]                            # запуск по созданию тега (v1.0.0 и т. п.)
+  #pull_request:
+  #  branches: [main]
+  push:              # Все пуши во все ветки
+  pull_request:      # Все PR во все ветки
 env:                                              
   DB_PATH: postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable
   LOG_LEVEL: info
