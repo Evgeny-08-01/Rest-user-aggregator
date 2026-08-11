@@ -1,0 +1,3 @@
+POST http://localhost:8087/api/subscriptions
+PUT http://localhost:8087/api/subscriptions/1
+DELETE http://localhost:8087/api/subscriptions/1

@@ -31,6 +31,7 @@ COPY --from=base_image /subscription_app /subscription_app
 # Копируем миграции и документацию
 COPY --from=base_image /app/migrations ./migrations
 COPY --from=base_image /app/docs ./docs
+COPY --from=base_image /app/web ./web
 
 # Копируем .env в корень (где запускается бинарник)
 # COPY --from=base_image /app/.env /.env

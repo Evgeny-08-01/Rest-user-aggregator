@@ -10,10 +10,13 @@
 #   make docker-up     - Start all containers
 #   make docker-down   - Stop all containers
 #   make docker-up-db  - Start only PostgreSQL
+#   make docker-logs   - Show logs from all containers
+#   make docker-logs-server - Show logs only from server
+#   make clean         - Clean build artifacts and cache
 #   make help          - Show all available commands
 # ============================================================
 
-.PHONY: test-u test-int test-all run build docker-up docker-down docker-up-db help
+.PHONY: test-u test-int test-all run build docker-up docker-down docker-up-db docker-logs docker-logs-server clean help
 
 # -------------------- TESTS --------------------
 
@@ -23,7 +26,9 @@ test-u:
 	@echo "  RUNNING UNIT TESTS (tag: unit)"
 	@echo "========================================="
 	go test ./internal/handlers -tags=unit -v
-	go test ./pkg/logger -v 
+	go test ./internal/service -tags=unit -v
+	go test ./internal/authentication -tags=unit -v
+	go test ./pkg/logger -v
 
 # Integration tests (tag: integration) - starts DB and waits (max 30s)
 test-int:
@@ -51,8 +56,8 @@ test-all:
 	@echo "========================================="
 	@echo "  RUNNING ALL TESTS"
 	@echo "========================================="
-	$(MAKE) test-u && $(MAKE) test-
-	
+	$(MAKE) test-u && $(MAKE) test-int
+
 # -------------------- RUN --------------------
 
 # Run the server locally with database
@@ -73,6 +78,7 @@ run:
 	@$(MAKE) docker-up-db
 	@echo "[RUN] Starting server locally..."
 	go run cmd/api/main.go
+
 # -------------------- BUILD --------------------
 
 # Build the binary
@@ -126,7 +132,7 @@ clean:
 	@echo "[RUN] Tidying go.mod..."
 	go mod tidy
 	@echo "========================================="
-	@echo "  CLEAN COMPLETE! 
+	@echo "  CLEAN COMPLETE!"
 	@echo "========================================="
 
 # -------------------- HELP --------------------
@@ -144,5 +150,8 @@ help:
 	@echo "  make docker-up     - Start containers"
 	@echo "  make docker-down   - Stop containers"
 	@echo "  make docker-up-db  - Start only DB"
+	@echo "  make docker-logs   - Show logs from all containers"
+	@echo "  make docker-logs-server - Show logs only from server"
+	@echo "  make clean         - Clean build artifacts and cache"
 	@echo "  make help          - Show this help"
 	@echo "========================================="

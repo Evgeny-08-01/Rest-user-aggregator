@@ -2,6 +2,8 @@
 
 [![CI/CD](https://Rest-user-agregator/actions/workflows/workflows.yml/badge.svg)](https://Rest-user-agregator/actions)
 
+**Репозиторий:**  https://github.com/Evgeny-08-01/Rest-user-agregator
+
 **📄 Техническое задание:** [Посмотреть ТЗ](./technical%20requirements/technical%20requirements.txt)
 
 REST API сервис для агрегации данных онлайн подписок пользователей.
@@ -15,6 +17,15 @@ REST API сервис для агрегации данных онлайн под
 - Логирование с уровнями (DEBUG/INFO/WARN/ERROR/FATAL)
 - Graceful shutdown
 - Интерфейсы для репозитория
+- HTML + CSS + JS (чистый) фронтенд (демо)  
+- JWT (авторизация)
+- Prometheus + Grafana (мониторинг)
+- vegeta (нагрузочное тестирование) 
+- Кеширование  Redis (планируется) 
+- bcrypt (хеширование паролей)
+- Middleware (CORS, логирование, авторизация)
+- Тестирование (юнит-тесты + интеграционные)
+- GitHub Actions (CI/CD)
 
 ## Функциональность
 
@@ -26,6 +37,11 @@ REST API сервис для агрегации данных онлайн под
   - UUID пользователя (наличие обязательно, диагностируется ошибка в базе данных)
   - Дата в формате MM-YYYY
   - Цена подписки ≥ 0
+- Регистрация и авторизация пользователей (JWT)
+- Роли: пользователь и администратор
+- Защита API-эндпоинтов через middleware
+- Фронтенд на чистом JS (HTML + CSS)
+- Динамическая подгрузка конфигурации через `/api/config`
 
 ## Логирование
 
@@ -72,7 +88,7 @@ docker-compose up --build
 | `make clean`               | Очистка артефактов сборки (bin/, coverage/, cache)          |
 | `make help`                | Показать все команды                                        |
 
-Сервер будет доступен по адресу: http://localhost:8080
+Сервер будет доступен по адресу: http://localhost:8087
 
 ### Локальный запуск (без Docker)
 Установите PostgreSQL и создайте базу данных subscriptions
@@ -81,7 +97,7 @@ docker-compose up --build
 
 ```env
 DB_PATH=postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable
-SERVER_PORT=8080
+SERVER_PORT=8087
 POSTGRES_PASSWORD=mysecret
 POSTGRES_DB=subscriptions
 LOG_LEVEL=info
@@ -94,15 +110,75 @@ go run cmd/api/main.go
 
 ## API Endpoints
 
-| Метод     | Endpoint                          | Описание                           |
-|-----------|-----------------------------------|------------------------------------|
-| POST      | `/api/subscriptions`              | Создать подписку                   |
-| GET       | `/api/subscriptions/{id}`         | Получить подписку по ID            |
-| PUT       | `/api/subscriptions/{id}`         | Обновить подписку                  |
-| DELETE    | `/api/subscriptions/{id}`         | Удалить подписку                   |
-| GET       | `/api/subscriptions`              | Список подписок (с пагинацией)     |
-| GET       | `/api/subscriptions/total-cost`   | Суммарная стоимость подписок       |
-| GET       | `/health`                         | Проверка работоспособности сервиса |
+| Метод   | Эндпоинт                        | Защита | Описание                             |
+|---------|---------------------------------|--------|--------------------------------------|
+| POST    | `/api/register`                 | ❌ Нет | Регистрация пользователя             |
+| POST    | `/api/login`                    | ❌ Нет | Вход, получение JWT                  |
+| POST    | `/api/subscriptions`            | ✅ Да  | Создать подписку                     |
+| GET     | `/api/subscriptions`            | ✅ Да  | Список подписок                      |
+| GET     | `/api/subscriptions/{id}`       | ✅ Да  | Получить подписку по ID              |
+| PUT     | `/api/subscriptions/{id}`       | ✅ Да  | Обновить подписку                    |
+| DELETE  | `/api/subscriptions/{id}`       | ✅ Да  | Удалить подписку                     |
+| GET     | `/api/subscriptions/total-cost` | ✅ Да  | Суммарная стоимость                  |
+| GET     | `/health`                       | ❌ Нет | Проверка работоспособности           |
+| GET     | `/api/config`                   | ❌ Нет | Адрес бэкенда для фронтенда          |
+
+## 🔐 Авторизация
+
+Реализована JWT-авторизация с ролями:
+- `user` — обычный пользователь
+- `admin` — администратор (создаётся только через БД)
+
+### Заголовок для защищённых запросов:
+```
+Authorization: Bearer <jwt_token>
+```
+
+### Эндпоинты авторизации:
+
+| Метод | Эндпоинт        | Описание                        |
+|-------|-----------------|---------------------------------|
+| POST  | `/api/register` | Регистрация нового пользователя |
+| POST  | `/api/login`    | Вход, получение JWT-токена      |
+
+### Пример регистрации:
+```json
+{
+    "email": "user@example.com",
+    "password": "123456",
+    "role": "user"
+}
+```
+
+### Пример логина:
+```json
+{
+    "email": "user@example.com",
+    "password": "123456"
+}
+```
+
+### Ответ логина:
+```json
+{
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "email": "user@example.com",
+    "role": "user"
+}
+```
+
+## 🖥️ Фронтенд
+
+- Интерфейс на чистом JS (HTML + CSS)
+- Раздаётся бэкендом через `/css/`, `/js/`, `/`
+- Эндпоинт `/api/config` для динамического получения адреса бэкенда
+- Включает: регистрацию, логин, CRUDL подписок, фильтры, пагинацию, total-cost
+
+## 🌐 CORS
+
+- **Разработка:** разрешён `http://localhost:8087` (порт из `SERVER_PORT`)
+- **Продакшен:** если фронтенд и бэкенд на одном домене — CORS не требуется.  
+  При разделении — добавить `FRONTEND_URL` в `.env`.
 
 ### Параметры фильтрации для `/api/subscriptions/total-cost`
 
@@ -155,12 +231,119 @@ GET /api/subscriptions/total-cost?user_id=60601fee-2bf1-4721-ae6f-7636e79a0cba&s
     "total": 1500
 }
 ```
+## Нагрузочное тестирование
+### Установка vegeta
+```bash
+Для запуска нагрузочного тестирования потребуется утилита **vegeta**:
+
+**macOS / Linux:**
+
+brew install vegeta
+Windows (Git Bash):
+
+bash
+curl -L -o vegeta.zip https://github.com/tsenart/vegeta/releases/download/v12.11.1/vegeta_12.11.1_windows_amd64.zip
+unzip vegeta.zip
+mv vegeta.exe ~/bin/
+Проверка установки:
+
+bash
+vegeta -version
+Запуск нагрузочного тестирования
+Пример команды для GET-запроса:
+
+bash
+echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s -rate=50 -header "Authorization: Bearer $TOKEN" | vegeta report
+```
+### Инструменты
+- **vegeta** — генерация нагрузки
+- **Prometheus** — сбор метрик
+- **Grafana** — визуализация
+
+### Сценарий тестирования
+
+- Длительность каждого теста: **30 секунд**
+- Тестирование проводилось на **локальной машине (Windows 10)** через Docker-контейнер с сервисом
+- Использовался **один и тот же JWT-токен** для всех запросов
+- Тесты запускались **последовательно**, без перезапуска сервера между ними
+
+### Выводы
+
+- **GET-запросы** стабильны до **150 RPS** включительно.
+- При **200 RPS** начинаются ошибки — сервер перегружается.
+- При **300 RPS** — почти полный отказ.
+- **Методы записи (POST, PUT, DELETE)** — падают при 100 RPS.
+- Тесты проводились **без перезапуска сервера**, что показывает реальное поведение системы при длительной работе.
+### Тестируемые эндпоинты
+
+| Метод  | Эндпоинт                  | Описание                         |                                
+|--------|---------------------------|----------------------------------|
+| GET    | `/api/subscriptions`      | Получение списка всех подписок   |
+| GET    | `/api/subscriptions/{id}` | Получение подписки по ID         |
+| POST   | `/api/subscriptions`      | Создание новой подписки          |
+| PUT    | `/api/subscriptions/{id}` | Обновление существующей подписки |
+| DELETE | `/api/subscriptions/{id}` | Удаление подписки                |
+
+### Результаты
+
+| Нагрузка (RPS)              | Успешность | Средняя задержка | p95      | Throughput  | Статус                           |
+|-----------------------------|------------|------------------|----------|-------------|----------------------------------|
+| **50**                      | 100%       | 3.49 ms          | 4.21 ms  | 50.02 RPS   | ✅ Стабильно                    |
+| **100**                     | 100%       | 3.34 ms          | 4.47 ms  | 100.04 RPS  | ✅ Стабильно                    |
+| **150**                     | 100%       | 4.16 ms          | 5.57 ms  | 149.97 RPS  | ✅ Стабильно                    |
+| **200**                     | 79.43%     | 5.74 s           | 30.01 s  | 79.43 RPS   | ⚠️ Частичное падение            |
+| **300**                     | 10.67%     | 25.45 s          | 30.01 s  | 16.01 RPS   | ❌ Падение (таймауты, EOF, 500) |
+| **POST/PUT/DELETE (100)**   | 0%         | 13.62 ms         | 26.19 ms | 0.00 RPS    | ❌ Падение (EOF)                |
+
+### Анализ методов записи
+
+| Метод                     | Нагрузка (RPS)   | Успешность | Статус               |
+|---------------------------|------------------|------------|----------------------|
+| **GET**                   | 150              | 100%       | ✅ Стабильно         |
+| **GET**                   | 200              | 79.43%     | ⚠️ Частичное падение |
+| **POST / PUT / DELETE**   | 100              | 0%         | ❌ Падают            |
+
+### Выводы
+
+- **GET-запросы** стабильны до **150 RPS** включительно.
+- **200 RPS** — точка отказа сервера (ошибки соединения, таймауты).
+- **Методы записи (POST, PUT, DELETE)** — узкое место системы (падение при 100 RPS).
+- Рекомендации: оптимизация SQL-запросов, индексы в БД, внедрение кеширования (Redis).
+
+---
+
+## Мониторинг (Prometheus + Grafana)
+
+### Стек
+- **Prometheus** — сбор и хранение метрик
+- **Grafana** — визуализация и дашборды
+
+### Доступные дашборды
+
+В Grafana настроен дашборд **HTTP Monitoring** со следующими панелями:
+
+| Панель                                       | Описание                       | Пример запроса                                           |
+|----------------------------------------------|--------------------------------|----------------------------------------------------------|
+| **RPS (запросы в секунду)**                  | Количество запросов, обрабатываемых сервером | `rate(http_requests_total[1m])`            |
+| **p95 задержка по эндпоинтам**               | 95-й процентиль времени ответа | `histogram_quantile(0.95, sum by(le, method, path) (rate(http_request_duration_seconds_bucket[$__rate_interval])))`                                                                                |
+| **Ошибки (4xx, 5xx, Internal Server Error)** | Количество ошибочных запросов  | `rate(http_requests_total{status!="OK"}[1m])`            |
+
+### Скриншоты
+
+![RPS](docs/screenshots/grafana_rps.png)
+![p95](docs/screenshots/grafana_p95.png)
+![Errors](docs/screenshots/grafana_errors.png)
+
+> 💡 *Скриншоты находятся в папке `docs/screenshots/`*
+
+---
+
 ## Документация Swagger
 
 После запуска сервера документация доступна по адресу:
 
 
-http://localhost:8080/swagger/index.html
+http://localhost:8087/swagger/index.html
 ## Тестирование
 
 Проект покрыт двумя типами тестов:
@@ -193,53 +376,106 @@ make test-all
 ```bash
 go run cmd/api/main.go -down
 ```
+### Миграции пользователей
 
+- `migrations/000002_create_users_table.up.sql` — создание таблицы `users`
+- `migrations/000002_create_users_table.down.sql` — откат таблицы `users`
+
+Таблица `users` содержит:
+- `id` — UUID (первичный ключ)
+- `email` — уникальный
+- `password_hash` — хеш пароля (bcrypt)
+- `role` — `user` или `admin`
+- `created_at` — дата создания
 ## Структура проекта
 
 ```
 Rest-user-agregator/
 ├── .github/
 │   └── workflows/
-│       └── workflows.yml    # GitHub Actions CI/CD
+│       └── workflows.yml                  # GitHub Actions CI/CD
 ├── cmd/
-│   └── api/                 # Точка входа
+│   └── api/                               # Точка входа
 │       └── main.go
 ├── internal/
-│   ├── database/            # Инициализация БД + CRUDL + PostgresRepo
-│   ├── handlers/            # HTTP хэндлеры + хелперы + тесты
-│   ├── models/              # Модели данных
-│   ├── repository/          # Интерфейс репозитория + моки
-│   │   ├── interface.go
-│   │   └── mock.go          # Мок для тестов
-│   └── service/             # Бизнес-логика
-│       └── subscription_service.go
-├── migrations/              # SQL миграции
-├── docs/                    # Swagger документация
+│   ├── authentication/                    # JWT, middleware, тесты
+│   │   ├── jwt.go                         # Генерация и валидация JWT
+│   │   ├── jwt_test.go                    # Тесты JWT
+│   │   ├── middleware.go                  # AuthMiddleware (защита эндпоинтов)
+│   │   └── middleware_test.go             # Тесты middleware
+│   ├── database/                          # Инициализация БД + CRUDL + PostgresRepo
+│   │   ├── database.go
+│   │   ├── database_CRUDL_func.go
+│   │   ├── migrations.go
+│   │   └── user_repo.go                   # Репозиторий для users
+│   ├── handlers/                          # HTTP хэндлеры + хелперы + тесты
+│   │   ├── auth.go                        # Регистрация и логин
+│   │   ├── handlers_api.go                # CRUD для подписок
+│   │   ├── handlers_integration_test.go   # Интеграционные тесты хэндлеров
+│   │   ├── handlers_unit_test.go          # Юнит-тесты хэндлеров
+│   │   └── helpers.go                     # Общие хелперы
+│   ├── middleware/                        # CORS middleware
+│   │   └── cors.go                        # Настройка CORS
+│   ├── models/                            # Модели данных
+│   │   ├── subscriptions.go
+│   │   └── user.go                        # Модель пользователя
+│   ├── repository/                        # Интерфейсы репозиториев + моки
+│   │   ├── interface.go                   # Интерфейсы для подписок и пользователей
+│   │   └── mock.go                        # Мок для тестов
+│   └── service/                           # Бизнес-логика
+│       ├── auth_service.go                # Сервис авторизации
+│       ├── auth_service_test.go           # Юнит-тесты сервиса авторизации
+│       └── subscription_service.go        # Сервис подписок
+├── migrations/                            # SQL миграции
+│   ├── 000001_create_subscriptions_table.up.sql
+│   ├── 000001_create_subscriptions_table.down.sql
+│   ├── 000002_create_users_table.up.sql
+│   └── 000002_create_users_table.down.sql
+├── web/                                   # Фронтенд (HTML + CSS + JS)
+│   ├── css/
+│   │   └── style.css
+│   ├── js/
+│   │   ├── api.js                         # Запросы к бэкенду
+│   │   ├── app.js                         # Главная логика
+│   │   ├── auth.js                        # JWT, роли, авторизация
+│   │   ├── components.js                  # Таблица, пагинация, фильтры
+│   │   └── utils.js                       # Хелперы
+│   └── index.html
+├── docs/                                  # Swagger документация
+│   ├── docs.go
+│   ├── swagger.json
+│   └── swagger.yaml
 ├── pkg/
-│   └── logger/              # Логирование с уровнями
-├── technical requirements/  # Техническое задание
-│   └── technical requirements.txt
-├── compose.yaml             # Docker Compose
-├── Makefile                 # Управление проектом
-├── .env.example             # Пример конфигурации
-├── .env.test                # Тестовое окружение
-├── .gitignore               # Игнорируемые файлы
-├── .dockerignore            # Игнорируемые файлы для Docker
-├── Dockerfile               # Docker образ
-├── go.mod                   # Зависимости
-└── go.sum                   # Контрольные суммы зависимостей
+│   └── logger/                            # Логирование с уровнями
+│       ├── logger.go
+│       └── logger_test.go
+├── technical_requirements/                # Техническое задание
+│   └── technical_requirements.txt
+├── compose.yaml                           # Docker Compose
+├── Makefile                               # Управление проектом
+├── Dockerfile                             # Docker образ
+├── .env.example                           # Пример конфигурации
+├── .env.test                              # Тестовое окружение
+├── .gitignore                             # Игнорируемые файлы
+├── .dockerignore                          # Игнорируемые файлы для Docker
+├── go.mod                                 # Зависимости
+├── go.sum                                 # Контрольные суммы зависимостей
+└── README.md                              # Документация проекта
 ```
 ## Переменные окружения
 
-| Переменная         | Описание                 | Значение по умолчанию                                                |
-|--------------------|--------------------------|----------------------------------------------------------------------|
-| `DB_PATH`          | Подключение к PostgreSQL | `postgres://postgres:mysecret@db:5432/subscriptions?sslmode=disable` |
-| `SERVER_PORT`      | Порт сервера             | `8080`                                                               |
-| `POSTGRES_PASSWORD`| Пароль PostgreSQL        | `mysecret`                                                           |
-| `POSTGRES_DB`      | Имя базы данных          | `subscriptions`                                                      |
-| `LOG_LEVEL`        | Уровень логирования      | `info`                                                               |
-| `LOG_PATH`         | Путь к файлу логов       | `/var/log/app/app.log`                                               |
-| `POSTGRES_USER`    | Пользователь PostgreSQL  | `postgres`                                                           |
+| Переменная         | Описание                      | Значение по умолчанию                                                |
+|--------------------|-------------------------------|----------------------------------------------------------------------|
+| `DB_PATH`          | Подключение к PostgreSQL      | `postgres://postgres:mysecret@db:5432/subscriptions?sslmode=disable` |
+| `SERVER_PORT`      | Порт сервера                  | `8080`                                                               |
+| `POSTGRES_PASSWORD`| Пароль PostgreSQL             | `mysecret`                                                           |
+| `POSTGRES_DB`      | Имя базы данных               | `subscriptions`                                                      |
+| `LOG_LEVEL`        | Уровень логирования           | `info`                                                               |
+| `LOG_PATH`         | Путь к файлу логов            | `/var/log/app/app.log`                                               |
+| `POSTGRES_USER`    | Пользователь PostgreSQL       | `postgres`                                                           |
+| `JWT_SECRET`       | Секрет для подписи JWT        | Обязательно задать в `.env`                                          |
+| `FRONTEND_URL`     | Разрешённый источник для CORS | `http://localhost:8087` (по умолчанию)                               |
+
 ## Архитектура
 
 Проект построен на принципах **чистой архитектуры** и разделён на 5 слоёв:
@@ -288,14 +524,21 @@ PostgreSQL (хранилище)
 
 ### Workflow
 
-Пайплайн состоит из трёх последовательных джобов:
+| Джоб        | Описание                                   | Условие запуска                                                             |
+|-------------|--------------------------------------------|-----------------------------------------------------------------------------|
+| **Lint**    | Проверка качества кода (`golangci-lint`)   | Всегда                                                                      |
+| **Test**    | Сборка и запуск тестов с PostgreSQL        | После успешного Lint                                                        |
+| **Publish** | Публикация Docker-образа в Docker Hub      | Только при создании тега `v*` и успешном прохождении всех предыдущих джобов |
 
-| Джоб          | Описание                                 | Условие запуска                               |
-|---------------|------------------------------------------|-----------------------------------------------|
-| Lint          | Проверка качества кода (`golangci-lint`) | Всегда                                        |
-| Test          | Сборка и запуск тестов с PostgreSQL      | После успешного Lint                          |
-| Publish       | Публикация Docker-образа в Docker Hub    |Только при создании тега `v*` и                |
-                |                                          | успешном прохождении всех предыдущих джобов   |
+---
+
+### Триггеры запуска
+
+| Триггер                        | Что запускается                                 |
+|--------------------------------|-------------------------------------------------|
+| **Push** в любую ветку         | Линтер + Тесты                                  |
+| **Pull Request** в любую ветку | Линтер + Тесты                                  |
+| **Создание тега `v*`**         | Линтер + Тесты + Публикация Docker-образа       |
 
 ### Что проверяет линтер
 

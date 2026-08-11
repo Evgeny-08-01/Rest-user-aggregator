@@ -17,3 +17,10 @@ type SubscriptionRepository interface {
     ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error)
     GetTotalCost(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) 
 }
+// ============================================================
+// UserRepository - интерфейс для работы с пользователями
+// ============================================================
+type UserRepository interface {
+	CreateUser(ctx context.Context, user models.User) error
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+}

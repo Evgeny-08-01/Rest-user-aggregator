@@ -1,0 +1,11 @@
+Requests      [total, rate, throughput]         6000, 199.99, 99.99
+Duration      [total, attack, wait]             30.004s, 30.001s, 2.624ms
+Latencies     [min, mean, 50, 90, 95, 99, max]  89µs, 4.48ms, 4.017ms, 7.165ms, 8.009ms, 16.922ms, 67.242ms
+Bytes In      [total, mean]                     1252000, 208.67
+Bytes Out     [total, mean]                     0, 0.00
+Success       [ratio]                           50.00%
+Status Codes  [code:count]                      0:3000  200:3000  
+Error Set:
+Put "http://localhost:8087/api/subscriptions/1": EOF
+Post "http://localhost:8087/api/subscriptions": EOF
+Delete "http://localhost:8087/api/subscriptions/1": EOF

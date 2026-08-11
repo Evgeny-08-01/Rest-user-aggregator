@@ -5,11 +5,12 @@ package main
 // ============================================================
 
 import (
-	"context" // ВСТАВКА ФРОНТЕНД                                                               // ВСТАВКА ФРОНТЕНД
+	"context" // ВСТАВКА ФРОНТЕНД
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,19 +18,22 @@ import (
 	"time"
 
 	_ "Rest-user-agregator/docs"
+	"Rest-user-agregator/internal/authentication"
 	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/internal/handlers"
+	"Rest-user-agregator/internal/middleware"
 	"Rest-user-agregator/internal/service"
 	"Rest-user-agregator/pkg/logger"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/swaggo/http-swagger"
 )
 
 // @title Subscription API
 // @version 1.0
-// @SERVER_PORT=8080
+// @SERVER_PORT=8087
 // @BasePath /api
 // ============================================================
 // 2. ТОЧКА ВХОДА
@@ -62,8 +66,13 @@ func run() error {
 	if err := initDB(); err != nil {
 		return fmt.Errorf("DB init: %w", err)
 	}
-	defer database.Close() // Откладываем закрытие БД до завершения программы
-//	logger.Info("Database connected successfully") -дублирование с db.init
+	
+defer func() {
+    if err := database.Close(); err != nil {
+        logger.Error("failed to close db: %v", err)
+    }
+}()
+	
 
 	// 4. Миграции
 	if err := runMigrations(); err != nil {
@@ -150,18 +159,33 @@ func runMigrations() error {
 
 // 4.5 Запуск сервера
 func startServer() error {
+	// ============================================================
+	// 3. Инициализация БД (УЖЕ БЫЛО)
+	// ============================================================
 	repo := database.NewPostgresRepo() // экземпляр репозитория, содержащий пул соединений и указатель на БД,
-	//  содержит методы работы с БД. NewPostgresRepo-конструктор над PostgresRepo
+	// содержит методы работы с БД. NewPostgresRepo-конструктор над PostgresRepo
 	// PostgresRepo- структура и содежит поле: db *sql.DB
-	svc := service.NewSubscriptionService(repo)
-	handler := handlers.NewHandler(svc) // экземпляр хендлера, содержащий экземпляр репозитория repo для работы с БД,
+
+	// ============================================================
+	// 3.1 СОЗДАНИЕ СЕРВИСОВ
+	// ============================================================
+	svc := service.NewSubscriptionService(repo) // Сервис для работы с подписками (CRUD и total-cost)
+	authService := service.NewAuthService(repo) // НОВЫЙ СЕРВИС: Сервис для авторизации (регистрация, логин, JWT)
+
+	// ============================================================
+	// 4. ИНИЦИАЛИЗАЦИЯ ХЭНДЛЕРА
+	// ============================================================
+	// Раньше хэндлер принимал только сервис подписок.
+	// Теперь передаём оба сервиса: для подписок и для авторизации.
+	// ============================================================
+	handler := handlers.NewHandler(svc, authService) // экземпляр хендлера, содержащий экземпляр репозитория repo для работы с БД,
 	// содержит методы обработки HTTP-запросов.
 	// NewHandler — конструктор, создающий экземпляр Handler.
-	// Handler — структура с полем Repo(тип интерфейс) repository.SubscriptionRepository(интерфейс).
-	// !!!! Таким образом  handler содержит методы обработки запросов и подключение к БД
+	// Handler — структура с полями Service (интерфейс) и AuthService (интерфейс).
+	// !!!! Таким образом handler содержит методы обработки запросов и подключение к БД
 
 	mux := http.NewServeMux() // Создаем роутер-switch для URL
-
+    mux.Handle("/metrics", promhttp.Handler())
 	// ============================================================
 	// ФРОНТЕНД
 	// ============================================================
@@ -170,34 +194,6 @@ func startServer() error {
 	// ============================================================
 	mux.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./web/css")))) // ВСТАВКА ФРОНТЕНД
 	mux.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./web/js"))))    // ВСТАВКА ФРОНТЕНД
-
-	// ============================================================
-	// 2. HTML (КОРЕНЬ) — С ВОЗМОЖНОСТЬЮ ДОБАВИТЬ ЛОГИКУ
-	// ============================================================
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { // ВСТАВКА ФРОНТЕНД
-		// Здесь можно добавить:
-		// - Проверку авторизации
-		// - Логирование
-		// - Выбор другой страницы (login.html / index.html)
-		http.ServeFile(w, r, "./web/index.html") // ВСТАВКА ФРОНТЕНД
-	})
-
-	// ============================================================
-	// CORS MIDDLEWARE
-	// ============================================================
-	corsMiddleware := func(next http.HandlerFunc) http.HandlerFunc { // ВСТАВКА ФРОНТЕНД
-		return func(w http.ResponseWriter, r *http.Request) { // ВСТАВКА ФРОНТЕНД
-			w.Header().Set("Access-Control-Allow-Origin", "*")                                // ВСТАВКА ФРОНТЕНД
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS") // ВСТАВКА ФРОНТЕНД
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")                    // ВСТАВКА ФРОНТЕНД
-			if r.Method == "OPTIONS" {                                                        // ВСТАВКА ФРОНТЕНД
-				w.WriteHeader(http.StatusOK) // ВСТАВКА ФРОНТЕНД
-				return                       // ВСТАВКА ФРОНТЕНД
-			} // ВСТАВКА ФРОНТЕНД
-			next(w, r) // ВСТАВКА ФРОНТЕНД
-		} // ВСТАВКА ФРОНТЕНД
-
-	} // ВСТАВКА ФРОНТЕНД
 	// ============================================================
 	// 3. ЭНДПОИНТ /api/config — ОТДАЁТ АДРЕС СЕРВЕРА ДЛЯ ФРОНТЕНДА
 	// ============================================================
@@ -208,104 +204,114 @@ func startServer() error {
 	// Пример ответа:
 	//   {"apiBase": "http://localhost:8080/api"}
 	// ============================================================
-	mux.HandleFunc("GET /api/config", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Получаем порт из переменной окружения (или 8080 по умолчанию)
-		port := os.Getenv("SERVER_PORT")
-		if port == "" {
-			port = "8080"
-		}
-
-		// 2. Формируем объект с адресом бэкенда
-		config := map[string]string{
-			"apiBase": "http://localhost:" + port + "/api",
-		}
-
-		// 3. Устанавливаем заголовок, что отдаём JSON
-		w.Header().Set("Content-Type", "application/json")
-
-		// 4. Кодируем объект в JSON и отправляем клиенту
-		if err := json.NewEncoder(w).Encode(config); err != nil {
-			logger.Error("Failed to encode config: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	}))
-		// ============================================================
-	// 4. ЛОГИН (заглушка для теста)
+	mux.HandleFunc("GET /api/config", middleware.MetricsMiddleware(middleware.CorsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	port := os.Getenv("SERVER_PORT")
+	if port == "" {
+		port = "8087"
+	}
+	config := map[string]string{
+		"apiBase": "http://localhost:" + port + "/api",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(config); err != nil {
+		logger.Error("Failed to encode config: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+})))
 	// ============================================================
-	// Этот эндпоинт обрабатывает POST /api/login.
-	// Принимает JSON с полями username и password.
-	// Возвращает токен (заглушка) и роль пользователя.
+	// 4. АВТОРИЗАЦИЯ (регистрация и вход) — ОТКРЫТЫЕ ЭНДПОИНТЫ
+	// ============================================================
+	// Эти эндпоинты обрабатывают запросы на создание нового пользователя
+	// и вход в систему с получением JWT-токена.
 	//
-	// Пример запроса:
-	//   {"username": "admin", "password": "admin"}
+	// Регистрация:  POST /api/register
+	//   Тело:       { "email": "user@example.com", "password": "123456", "role": "user" }
+	//   Ответ:      201 Created { "message": "User registered successfully" }
 	//
-	// Пример ответа:
-	//   {"token": "fake-jwt-token", "username": "admin", "role": "user"}
+	// Логин:        POST /api/login
+	//   Тело:       { "email": "user@example.com", "password": "123456" }
+	//   Ответ:      200 OK { "token": "jwt_token", "email": "...", "role": "..." }
+	//
+	// Оба эндпоинта используют CORS middleware (разрешает запросы с фронтенда)
+	// и LoggingMiddleware (логирует каждый запрос).
 	// ============================================================
-	mux.HandleFunc("POST /api/login", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Проверяем, что метод POST
-		if r.Method != "POST" {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
+	mux.HandleFunc("POST /api/register", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.RegistrationHandler)))
+	mux.HandleFunc("POST /api/login", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.LoginHandler)))
 
-		// 2. Читаем тело запроса
-		var creds struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-			logger.Warn("Login: invalid JSON: %v", err)
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
-			return
-		}
-
-		// 3. Проверяем логин и пароль (заглушка)
-		// В реальном проекте здесь был бы запрос к БД и сравнение хешей
-		if (creds.Username == "admin" && creds.Password == "admin") ||
-		   (creds.Username == "user" && creds.Password == "user") {
-
-			// 4. Генерируем фейковый JWT-токен (для теста)
-			token := "fake-jwt-token-for-" + creds.Username
-
-			// 5. Определяем роль
-			role := "user"
-			if creds.Username == "admin" {
-				role = "admin"
-			}
-
-			// 6. Отправляем ответ
-			w.Header().Set("Content-Type", "application/json")
-			response := map[string]string{
-				"token":    token,
-				"username": creds.Username,
-				"role":     role,
-			}
-			if err := json.NewEncoder(w).Encode(response); err != nil {
-				logger.Error("Login: failed to encode response: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			}
-			return
-		}
-
-		// 7. Если логин/пароль не подошли
-		logger.Warn("Login: invalid credentials for user: %s", creds.Username)
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-	}))
-	// CRUDL операции
-	mux.HandleFunc("POST    /api/subscriptions", corsMiddleware(handlers.LoggingMiddleware(handler.CreateSubscriptionHandler)))      // ИЗМЕНЕНО ПОД ФРОНТЕНД
-	mux.HandleFunc("GET     /api/subscriptions/{id}", corsMiddleware(handlers.LoggingMiddleware(handler.GetSubscriptionHandler)))    // ИЗМЕНЕНО ПОД ФРОНТЕНД
-	mux.HandleFunc("PUT     /api/subscriptions/{id}", corsMiddleware(handlers.LoggingMiddleware(handler.UpdateSubscriptionHandler))) // ИЗМЕНЕНО ПОД ФРОНТЕНД
-	mux.HandleFunc("DELETE  /api/subscriptions/{id}", corsMiddleware(handlers.LoggingMiddleware(handler.DeleteSubscriptionHandler))) // ИЗМЕНЕНО ПОД ФРОНТЕНД
-	mux.HandleFunc("GET     /api/subscriptions", corsMiddleware(handlers.LoggingMiddleware(handler.ListSubscriptionsHandler)))       // ИЗМЕНЕНО ПОД ФРОНТЕНД
-	mux.HandleFunc("GET     /api/subscriptions/total-cost", corsMiddleware(handlers.LoggingMiddleware(handler.GetTotalCostHandler))) // ИЗМЕНЕНО ПОД ФРОНТЕНД
-	mux.HandleFunc("GET     /swagger/", httpSwagger.WrapHandler)
 	// ============================================================
-	// HEALTHCHECK (для Docker)
+	// 5. CRUDL операции (ЗАЩИЩЕНЫ АВТОРИЗАЦИЕЙ)
 	// ============================================================
-	mux.HandleFunc("GET /health", handlers.LoggingMiddleware(handlers.HealthHandler))
+	// Все эндпоинты /api/subscriptions защищены middleware AuthMiddleware,
+	// который проверяет JWT-токен и добавляет user_id в контекст.
+	// ============================================================
+mux.HandleFunc("POST /api/subscriptions",
+	authentication.AuthMiddleware(
+		middleware.CorsMiddleware(
+			middleware.MetricsMiddleware(
+				handlers.LoggingMiddleware(
+					handler.CreateSubscriptionHandler)))))
 
-	//  Получаем порт из .env
+mux.HandleFunc("GET /api/subscriptions/{id}", 
+authentication.AuthMiddleware(
+	middleware.CorsMiddleware(
+		middleware.MetricsMiddleware(
+			handlers.LoggingMiddleware(
+				handler.GetSubscriptionHandler)))))
+
+mux.HandleFunc("PUT /api/subscriptions/{id}", 
+authentication.AuthMiddleware(
+	middleware.CorsMiddleware(
+		middleware.MetricsMiddleware(
+			handlers.LoggingMiddleware(
+				handler.UpdateSubscriptionHandler)))))
+
+mux.HandleFunc("DELETE /api/subscriptions/{id}", 
+authentication.AuthMiddleware(
+	middleware.CorsMiddleware(
+		middleware.MetricsMiddleware(
+			handlers.LoggingMiddleware(
+				handler.DeleteSubscriptionHandler)))))
+
+mux.HandleFunc("GET /api/subscriptions", 
+authentication.AuthMiddleware(
+	middleware.CorsMiddleware(
+		middleware.MetricsMiddleware(
+			handlers.LoggingMiddleware(
+				handler.ListSubscriptionsHandler)))))
+
+mux.HandleFunc("GET /api/subscriptions/total-cost", 
+authentication.AuthMiddleware(
+	middleware.CorsMiddleware(
+		middleware.MetricsMiddleware(
+			handlers.LoggingMiddleware(
+				handler.GetTotalCostHandler)))))
+	// ============================================================
+	// 6. ПУБЛИЧНЫЕ ЭНДПОИНТЫ (БЕЗ АВТОРИЗАЦИИ)
+	// ============================================================
+
+	// Swagger документация
+	mux.HandleFunc("GET /swagger/", httpSwagger.WrapHandler)
+
+	// Healthcheck (для Docker)
+mux.HandleFunc("GET /health", middleware.MetricsMiddleware(
+	                                 middleware.CorsMiddleware(
+		                                   handlers.LoggingMiddleware(
+			                                      handlers.HealthHandler))))
+// ============================================================
+	// 2. HTML (КОРЕНЬ) — С ВОЗМОЖНОСТЬЮ ДОБАВИТЬ ЛОГИКУ
+	// ============================================================
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {                      // ВСТАВКА ФРОНТЕНД
+		// Здесь можно добавить:
+		// - Проверку авторизации
+		// - Логирование
+		// - Выбор другой страницы (login.html / index.html)
+		http.ServeFile(w, r, "./web/index.html")                                            // ВСТАВКА ФРОНТЕНД
+	})
+
+	// ============================================================
+	// 7. ЗАПУСК СЕРВЕРА
+	// ============================================================
+	// Получаем порт из .env
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"
@@ -313,7 +319,6 @@ func startServer() error {
 	}
 	// Создаем HTTP сервер с таймаутами
 	srv := &http.Server{ // указатель на структуру http.Server.... поля структуры:
-
 		Addr:         ":" + port,       // адрес и порт, на котором сервер будет слушать запросы
 		Handler:      mux,              // роутер, который будет обрабатывать входящие запросы
 		ReadTimeout:  5 * time.Second,  // максимальное время на чтение всего запроса (заголовки + тело) — защита от медленных клиентов
@@ -329,17 +334,19 @@ func startServer() error {
 		}
 	}()
 
-	//  Graceful shutdown (ожидание сигнала на отключение)
+	// ============================================================
+	// 8. GRACEFUL SHUTDOWN (ожидание сигнала на отключение)
+	// ============================================================
 	quit := make(chan os.Signal, 1)                      // Создаем канал для ожидания сигналов
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM) // Наблюдаем за сигналами SIGINT и SIGTERM
 	<-quit                                               // Блокируем до получения сигнала
 
 	logger.Info("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 11*time.Second) //      Контекст с таймаутом на завершение (11 секунд > WriteTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 11*time.Second) // Контекст с таймаутом на завершение (11 секунд > WriteTimeout)
 	defer cancel()
 
-	//  Останавливаем сервер по сигналу от контекста
+	// Останавливаем сервер по сигналу от контекста
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("Server forced to shutdown: %v", err)
 		os.Exit(1)
@@ -349,7 +356,7 @@ func startServer() error {
 	return nil
 }
 
-// Реализуем логику для rolling back
+
 func shouldRollback() bool {
 	return len(os.Args) > 1 && os.Args[1] == "-down"
 }

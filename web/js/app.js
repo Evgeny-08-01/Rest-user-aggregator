@@ -3,9 +3,8 @@
 // ============================================================
 
 import { showToast, isValidUUID, isValidDate } from './utils.js';
-// !!! ВАЖНО: Импортируем loadConfig из api.js !!!
-import { apiFetch, loadConfig } from './api.js';
-import { login, logout, checkAuthAndRender, isAdmin, getUser } from './auth.js';
+import { apiFetch, loadConfig, login, register } from './api.js';
+import { logout, checkAuthAndRender, isAdmin, getUser } from './auth.js';
 import { loadSubscriptions, renderList } from './components.js';
 
 let editId = null;
@@ -15,19 +14,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ============================================================
     // !!! ВАЖНО: Загружаем конфиг ПЕРВЫМ делом !!!
     // ============================================================
-    // Это гарантирует, что API_BASE будет загружен до того,
-    // как пользователь нажмёт кнопку "Войти" или выполнит любой другой запрос.
-    // 
-    // Без этого apiFetch не будет знать, куда отправлять запросы,
-    // и кнопка логина не будет работать.
-    // ============================================================
     try {
         await loadConfig();
         console.log('✅ Config loaded successfully');
     } catch (error) {
         console.warn('⚠️ Config loading failed, using fallback:', error);
-        // Даже если конфиг не загрузился, apiFetch использует fallback
-        // Поэтому приложение продолжит работать
     }
 
     // Проверяем авторизацию и показываем нужный интерфейс
@@ -40,23 +31,49 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ===== ВХОД =====
     document.getElementById('loginBtn').addEventListener('click', () => {
-        const username = document.getElementById('loginUsername').value.trim();
+        const email = document.getElementById('loginUsername').value.trim();
         const password = document.getElementById('loginPassword').value.trim();
-        if (!username || !password) {
-            showToast('Введите логин и пароль', true);
+
+        if (!email || !password) {
+            showToast('Введите email и пароль', true);
             return;
         }
-        login(username, password)
-            .then(() => {
-                showToast(`✅ Добро пожаловать, ${username}!`);
+
+        login(email, password)
+            .then(data => {
+                localStorage.setItem('jwt_token', data.token);
+                localStorage.setItem('jwt_user', JSON.stringify({
+                    email: data.email,
+                    role: data.role
+                }));
+                showToast('✅ Добро пожаловать!');
                 checkAuthAndRender();
                 loadSubscriptions();
             })
-            .catch(() => {}); // Ошибка уже обрабатывается в login()
+            .catch(err => showToast('❌ Ошибка: ' + err.message, true));
     });
 
     // ===== ВЫХОД =====
     document.getElementById('logoutBtn').addEventListener('click', logout);
+
+    // ===== РЕГИСТРАЦИЯ =====
+    document.getElementById('registerBtn')?.addEventListener('click', function() {
+        const email = document.getElementById('regEmail').value.trim();
+        const password = document.getElementById('regPassword').value.trim();
+
+        if (!email || !password) {
+            showToast('Введите email и пароль', true);
+            return;
+        }
+
+        register(email, password, 'user')
+            .then(() => {
+                showToast('✅ Регистрация успешна! Теперь войдите.');
+                document.getElementById('regEmail').value = '';
+                document.getElementById('regPassword').value = '';
+            })
+            .catch(err => showToast('❌ Ошибка: ' + err.message, true));
+    });
 
     // ===== СОЗДАНИЕ / ОБНОВЛЕНИЕ =====
     document.getElementById('createForm').addEventListener('submit', function(e) {
@@ -158,7 +175,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('applyFiltersBtn').addEventListener('click', () => {
         const userId = document.getElementById('filterUserId').value.trim();
         const serviceName = document.getElementById('filterServiceName').value.trim();
-        // Сброс пагинации на первую страницу
         window.goToPage(1);
         loadSubscriptions(userId, serviceName);
     });
@@ -185,11 +201,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Берём текущие фильтры
         const userId = document.getElementById('filterUserId')?.value.trim() || '';
         const serviceName = document.getElementById('filterServiceName')?.value.trim() || '';
 
-        // Формируем URL с параметрами
         let url = `/subscriptions/total-cost?start_date=${startDate}&end_date=${endDate}`;
         if (userId) {
             url += `&user_id=${encodeURIComponent(userId)}`;

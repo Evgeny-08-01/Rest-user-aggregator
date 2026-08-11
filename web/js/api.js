@@ -378,30 +378,36 @@ function mockFetch(path, opts) {
 // ============================================================
 // ЛОГИН (через apiFetch, для реального бэкенда)
 // ============================================================
-// Эта функция отправляет запрос на /api/login.
-// В случае успеха сохраняет токен и данные пользователя в localStorage.
-// 
-// !!! ВАЖНО: Эта функция теперь ЕДИНСТВЕННАЯ в этом файле.
-// Раньше была дублирующая функция login в auth.js,
-// теперь мы используем эту функцию из api.js.
 // ============================================================
-export function login(username, password) {
-    // Отправляем POST-запрос на /api/login с логином и паролем.
+// АВТОРИЗАЦИЯ ПОЛЬЗОВАТЕЛЯ (ВХОД В СИСТЕМУ)
+// ============================================================
+// Эта функция отправляет запрос на вход и получает JWT-токен.
+// 
+// ПАРАМЕТРЫ:
+//   - email    (string)  → Email пользователя (обязательно)
+//   - password (string)  → Пароль пользователя (обязательно)
+//
+// ВОЗВРАЩАЕТ:
+//   - Promise с данными от сервера
+//   - При успехе: { token: "jwt_token", email: "...", role: "user" }
+//   - При ошибке: { error: "..." }
+//
+// ИСПОЛЬЗОВАНИЕ:
+//   import { login } from './api.js';
+//   login('user@example.com', '123456')
+//     .then(data => {
+//         localStorage.setItem('jwt_token', data.token);
+//     })
+//     .catch(err => console.error('Ошибка входа:', err));
+// ============================================================
+export function login(email, password) {
+    // 1. Вызываем apiFetch с методом POST
     return apiFetch('/login', {
-        method: 'POST',
-        body: JSON.stringify({ username, password }),
-    }).then(data => {
-        // Если сервер вернул токен — сохраняем его.
-        if (data.token) {
-            // Сохраняем токен в localStorage для последующих запросов.
-            localStorage.setItem('jwt_token', data.token);
-            // Сохраняем данные пользователя (имя и роль).
-            localStorage.setItem('jwt_user', JSON.stringify({ 
-                username: data.username, 
-                role: data.role 
-            }));
-        }
-        return data;
+        method: 'POST',                          // HTTP метод
+        body: JSON.stringify({                   // Превращаем объект в JSON-строку
+            email: email,                        // Email пользователя
+            password: password,                  // Пароль (будет проверен на бэкенде)
+        }),
     });
 }
 
@@ -464,4 +470,38 @@ export function getTotalCost(startDate, endDate, userId = '', serviceName = '') 
     if (userId) url += `&user_id=${encodeURIComponent(userId)}`;
     if (serviceName) url += `&service_name=${encodeURIComponent(serviceName)}`;
     return apiFetch(url);
+}
+// ============================================================
+// РЕГИСТРАЦИЯ НОВОГО ПОЛЬЗОВАТЕЛЯ
+// ============================================================
+// Эта функция отправляет запрос на создание нового пользователя.
+// 
+// ПАРАМЕТРЫ:
+//   - email    (string)  → Email пользователя (обязательно)
+//   - password (string)  → Пароль пользователя (обязательно)
+//   - role     (string)  → Роль: 'user' или 'admin' (по умолчанию 'user')
+//
+// ВОЗВРАЩАЕТ:
+//   - Promise с данными ответа от сервера
+//   - При успехе: { message: "User registered successfully" }
+//   - При ошибке: { error: "..." }
+//
+// ИСПОЛЬЗОВАНИЕ:
+//   import { register } from './api.js';
+//   register('user@example.com', '123456', 'user')
+//     .then(data => console.log('Успех:', data))
+//     .catch(err => console.error('Ошибка:', err));
+// ============================================================
+export function register(email, password, role = 'user') {
+    // 1. Вызываем apiFetch с методом POST
+    //    - Первый аргумент: '/register' — эндпоинт на бэкенде
+    //    - Второй аргумент: объект с настройками запроса
+    return apiFetch('/register', {
+        method: 'POST',                          // HTTP метод
+        body: JSON.stringify({                   // Превращаем объект в JSON-строку
+            email: email,                        // Email пользователя
+            password: password,                  // Пароль (будет захеширован на бэкенде)
+            role: role,                          // Роль (по умолчанию 'user')
+        }),
+    });
 }

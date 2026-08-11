@@ -1,0 +1,11 @@
+Requests      [total, rate, throughput]         9000, 300.13, 16.01
+Duration      [total, attack, wait]             59.971s, 29.987s, 29.984s
+Latencies     [min, mean, 50, 90, 95, 99, max]  4.001ms, 25.451s, 30.005s, 30.014s, 30.015s, 30.021s, 30.083s
+Bytes In      [total, mean]                     1148920, 127.66
+Bytes Out     [total, mean]                     0, 0.00
+Success       [ratio]                           10.67%
+Status Codes  [code:count]                      0:8021  200:960  500:19  
+Error Set:
+500 Internal Server Error
+Get "http://localhost:8087/api/subscriptions": EOF
+Get "http://localhost:8087/api/subscriptions": context deadline exceeded (Client.Timeout exceeded while awaiting headers)

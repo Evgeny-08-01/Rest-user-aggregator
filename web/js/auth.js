@@ -45,10 +45,13 @@ export function checkAuthAndRender() {
     const userNameDisplay = document.getElementById('userNameDisplay');
     const userRoleDisplay = document.getElementById('userRoleDisplay');
 
+    console.log('userNameDisplay:', userNameDisplay); 
+    console.log('user:', user);                        
+
     if (token && user) {
         loginForm.style.display = 'none';
         mainApp.style.display = 'block';
-        userNameDisplay.textContent = user.username || 'Пользователь';
+        userNameDisplay.textContent = user.email || 'Пользователь';
         userRoleDisplay.textContent = user.role || 'user';
         userRoleDisplay.className = 'badge ' + (user.role === 'admin' ? 'badge-admin' : 'badge-user');
     } else {
@@ -57,18 +60,3 @@ export function checkAuthAndRender() {
     }
 }
 
-// ============================================================
-// ЛОГИН (используем функцию из api.js)
-// ============================================================
-// !!! ВАЖНО: УБИРАЕМ ДУБЛИРУЮЩУЮ ФУНКЦИЮ login !!!
-// Раньше здесь была своя реализация login, которая дублировала
-// функцию из api.js. Теперь мы просто экспортируем функцию из api.js
-// под тем же именем, чтобы не ломать код в других файлах.
-//
-// Это называется "реэкспорт" (re-export) — мы берём функцию из api.js
-// и делаем её доступной через auth.js.
-// ============================================================
-export function login(username, password) {
-    // Просто вызываем функцию из api.js и возвращаем результат
-    return apiLogin(username, password);
-}

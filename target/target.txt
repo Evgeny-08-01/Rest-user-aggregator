@@ -1,0 +1,6 @@
+GET http://localhost:8087/api/subscriptions
+GET http://localhost:8087/health
+GET http://localhost:8087/api/config
+POST http://localhost:8087/api/subscriptions
+PUT http://localhost:8087/api/subscriptions/1
+DELETE http://localhost:8087/api/subscriptions/1
