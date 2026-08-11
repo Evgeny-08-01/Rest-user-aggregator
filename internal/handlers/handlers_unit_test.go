@@ -450,3 +450,59 @@ func TestIsValidDate(t *testing.T) {
         })
     }
 }
+// ============================================================
+// ТЕСТ: HealthHandler
+// ============================================================
+// Проверяет, что HealthHandler возвращает {"status":"ok"}
+// Используется для Docker healthcheck
+// ============================================================
+func TestHealthHandler(t *testing.T) {
+    t.Log("Starting TestHealthHandler")
+
+    req := httptest.NewRequest("GET", "/health", nil)
+    w := httptest.NewRecorder()
+
+    HealthHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Logf("Expected status 200, got %d", w.Code)
+        t.Errorf("Expected 200, got %d", w.Code)
+    }
+
+    var resp map[string]string
+    if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+        t.Logf("Failed to decode response: %v", err)
+        t.Fatalf("Failed to decode: %v", err)
+    }
+
+    if resp["status"] != "ok" {
+        t.Logf("Expected status 'ok', got '%s'", resp["status"])
+        t.Errorf("Expected 'ok', got '%s'", resp["status"])
+    }
+    t.Log("HealthHandler returned correct response")
+}
+
+// ============================================================
+// ТЕСТ: LoggingMiddleware
+// ============================================================
+// Проверяет, что LoggingMiddleware не блокирует запросы
+// ============================================================
+func TestLoggingMiddleware(t *testing.T) {
+    t.Log("Starting TestLoggingMiddleware")
+
+    next := func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    }
+
+    handler := LoggingMiddleware(next)
+    req := httptest.NewRequest("GET", "/test", nil)
+    w := httptest.NewRecorder()
+
+    handler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Logf("Expected 200, got %d", w.Code)
+        t.Errorf("Expected 200, got %d", w.Code)
+    }
+    t.Log("LoggingMiddleware passed request successfully")
+}

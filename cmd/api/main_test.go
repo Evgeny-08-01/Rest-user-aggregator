@@ -1,19 +1,46 @@
+// ============================================================
+// ФАЙЛ: cmd/api/main_test.go
+// ============================================================
+// НАЗНАЧЕНИЕ: Интеграционные тесты для точки входа (main.go)
+// ТЕГ: //go:build integration — запускается с флагом -tags=integration
+//
+// ЧТО ПРОВЕРЯЕТСЯ:
+//   1. initDB — подключение к базе данных
+//   2. run — запуск всего приложения (с ошибкой при невалидном DB_PATH)
+//
+// ПОЧЕМУ ЭТИ ТЕСТЫ ВАЖНЫ:
+//   - Проверяют, что приложение корректно обрабатывает ошибки подключения к БД
+//   - Без этих тестов непонятно, упадёт ли сервер при недоступной БД
+//
+// КАК ЗАПУСТИТЬ:
+//   go test ./cmd/api -tags=integration -v
+// ============================================================
+
 //go:build integration
+
 package main
 
 import (
-	"fmt"
-	"os"
-	"testing"
+	"os"         // Для работы с переменными окружения
+	"testing"    // Стандартный пакет для тестов
 
-	"github.com/joho/godotenv"
+	"github.com/joho/godotenv" // Для загрузки .env.test
 )
 
 // ============================================================
-// ЗАГРУЗКА .env.test (только для тестов)
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: ЗАГРУЗКА .env.test
+// ============================================================
+// Что делает:
+//   - Загружает файл .env.test из корня проекта
+//   - Если файл не найден — возвращает ошибку
+//
+// ПОЧЕМУ НУЖНА:
+//   - Тесты используют отдельный .env.test, чтобы не влиять на .env
+//   - Без неё тесты могут использовать неверные данные
 // ============================================================
 func loadTestEnv() error {
-	// Загружаем ТОЛЬКО .env.test — если его нет, тест пропускается
+	// 1. ЗАГРУЖАЕМ .env.test (два уровня вверх от папки cmd/api)
+	//    Если файл не найден — возвращаем ошибку
 	err := godotenv.Load("../../.env.test")
 	if err != nil {
 		return err
@@ -22,67 +49,98 @@ func loadTestEnv() error {
 }
 
 // ============================================================
-// ТЕСТ ДЛЯ initDB()
+// 1. ТЕСТ: ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ (initDB)
+// ============================================================
+// Что проверяет:
+//   - Сценарий 1: невалидный DB_PATH → возвращает ошибку
+//   - Сценарий 2: валидный DB_PATH → подключается к БД
+//
+// ПОЧЕМУ ВАЖНО:
+//   - Без этого теста мы не знаем, как initDB() реагирует на ошибки
+//   - Если initDB() не падает при невалидном пути — приложение не запустится
 // ============================================================
 func TestInitDB(t *testing.T) {
-    if err := loadTestEnv(); err != nil {
-        t.Skip("Skipping test: .env.test not found")
-    }
-
-	// Сохраняем оригинальное значение DB_PATH
-	originalDBPath := os.Getenv("DB_PATH")
-	// Восстанавливаем оригинальное значение DB_PATH после теста
-	defer os.Setenv("DB_PATH", originalDBPath)
-
-	// Сценарий 1: неправильный путь → ошибка
-	os.Setenv("DB_PATH", "invalid")
-	err := initDB()
-	if err == nil {
-		fmt.Println("111")
-			      t.Fatal("expected error for invalid DB_PATH, got nil")
-	}
-	fmt.Println("222")
-	t.Log("Variant 1 passed: invalid path returned error")
-
-    
-	// Сценарий 2: правильный путь → если БД не запущена, тест падает
-    os.Setenv("DB_PATH", originalDBPath)
-    err = initDB()
-    if err != nil {
-		fmt.Println("333")
-        t.Fatalf("database not running: %v", err)
-    }
-}
-
-// ============================================================
-// ТЕСТ ДЛЯ run()
-// ============================================================
-func TestRun(t *testing.T) {
-	// Загружаем .env.test
+	// 1. ЗАГРУЖАЕМ .env.test
+	//    Если файл не найден — пропускаем тест (не падаем)
 	if err := loadTestEnv(); err != nil {
 		t.Skip("Skipping test: .env.test not found")
 	}
 
-	// Сохраняем оригинальные значения
-    origDB := os.Getenv("DB_PATH")
-    origLogLevel := os.Getenv("LOG_LEVEL")
-    origLogPath := os.Getenv("LOG_PATH")
+	// 2. СОХРАНЯЕМ ОРИГИНАЛЬНОЕ ЗНАЧЕНИЕ DB_PATH
+	//    Чтобы после теста восстановить окружение
+	originalDBPath := os.Getenv("DB_PATH")
+	// Отложенное восстановление: выполнится после теста
+	defer os.Setenv("DB_PATH", originalDBPath)
 
-    // Меняем переменные
-    os.Setenv("DB_PATH", "invalid")
-    os.Setenv("LOG_LEVEL", "info")
-    os.Setenv("LOG_PATH", "./logs/test.log")
+	// 3. СЦЕНАРИЙ 1: НЕВАЛИДНЫЙ ПУТЬ → ОШИБКА
+	//    Устанавливаем заведомо неправильную строку подключения
+	os.Setenv("DB_PATH", "invalid")
+	err := initDB()
 
-    // Откладываем восстановление (каждый на отдельной строке)
-    defer os.Setenv("DB_PATH", origDB)
-    defer os.Setenv("LOG_LEVEL", origLogLevel)
-    defer os.Setenv("LOG_PATH", origLogPath)
+	// 3.1 ПРОВЕРЯЕМ, ЧТО ОШИБКА ВОЗВРАЩАЕТСЯ
+	if err == nil {
+		// Если ошибки нет — тест падает
+		t.Fatal("expected error for invalid DB_PATH, got nil")
+	}
+	t.Log("Variant 1 passed: invalid path returned error")
 
-	// Запускаем run() — она должна вернуть ошибку до запуска сервера
-    err := run()
-    if err == nil {
-        t.Fatal("expected error for invalid DB_PATH, got nil")
-    }
+	// 4. СЦЕНАРИЙ 2: ВАЛИДНЫЙ ПУТЬ → ПОДКЛЮЧЕНИЕ
+	//    Возвращаем оригинальное значение DB_PATH
+	os.Setenv("DB_PATH", originalDBPath)
+	err = initDB()
 
-    t.Logf("run() returned expected error: %v", err)
+	// 4.1 ПРОВЕРЯЕМ, ЧТО ПОДКЛЮЧЕНИЕ УСПЕШНО
+	if err != nil {
+		// Если БД не запущена — тест падает
+		t.Fatalf("database not running: %v", err)
+	}
+}
+
+// ============================================================
+// 2. ТЕСТ: ЗАПУСК ПРИЛОЖЕНИЯ (run)
+// ============================================================
+// Что проверяет:
+//   - run() возвращает ошибку при невалидном DB_PATH
+//   - run() не запускает сервер, если БД недоступна
+//
+// ПОЧЕМУ ВАЖНО:
+//   - run() — это главная функция, которая запускает всё приложение
+//   - Если run() не возвращает ошибку при недоступной БД — сервер упадёт
+// ============================================================
+func TestRun(t *testing.T) {
+	// 1. ЗАГРУЖАЕМ .env.test
+	if err := loadTestEnv(); err != nil {
+		t.Skip("Skipping test: .env.test not found")
+	}
+
+	// 2. СОХРАНЯЕМ ОРИГИНАЛЬНЫЕ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+	//    Нужно восстановить их после теста
+	origDB := os.Getenv("DB_PATH")
+	origLogLevel := os.Getenv("LOG_LEVEL")
+	origLogPath := os.Getenv("LOG_PATH")
+
+	// Отложенное восстановление всех переменных
+	defer func() {
+		os.Setenv("DB_PATH", origDB)
+		os.Setenv("LOG_LEVEL", origLogLevel)
+		os.Setenv("LOG_PATH", origLogPath)
+	}()
+
+	// 3. УСТАНАВЛИВАЕМ НЕВАЛИДНЫЙ DB_PATH
+	//    run() должна вернуть ошибку подключения к БД
+	os.Setenv("DB_PATH", "invalid")
+	os.Setenv("LOG_LEVEL", "info")
+	os.Setenv("LOG_PATH", "./logs/test.log")
+
+	// 4. ВЫЗЫВАЕМ run()
+	//    Ожидаем ошибку, потому что DB_PATH невалидный
+	err := run()
+
+	// 5. ПРОВЕРЯЕМ, ЧТО ОШИБКА ВОЗВРАЩАЕТСЯ
+	if err == nil {
+		t.Fatal("expected error for invalid DB_PATH, got nil")
+	}
+
+	// 6. ЛОГИРУЕМ ОЖИДАЕМУЮ ОШИБКУ
+	t.Logf("run() returned expected error: %v", err)
 }

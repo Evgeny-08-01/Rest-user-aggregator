@@ -141,6 +141,11 @@ func addAdminContext(req *http.Request) *http.Request {
 //   4. Проверяем, что статус ответа совпадает с ожидаемым
 // ============================================================
 func TestCreateSubscriptionHandler(t *testing.T) {
+	 if err := database.CleanTestTable(); err != nil {
+        t.Logf("Failed to clean table: %v", err)
+        t.Fatalf("Cannot continue test without clean table")
+    }
+    t.Log("Table cleaned successfully")
 	handler := setupTestHandler()
 
 	// Таблица тестов: название, тело запроса, ожидаемый статус
@@ -222,6 +227,11 @@ func TestCreateSubscriptionHandler(t *testing.T) {
 //   5. Проверяем, что ответ содержит правильные данные
 // ============================================================
 func TestGetSubscriptionHandler(t *testing.T) {
+ if err := database.CleanTestTable(); err != nil {
+        t.Logf("Failed to clean table: %v", err)
+        t.Fatalf("Cannot continue test without clean table")
+    }
+    t.Log("Table cleaned successfully")
 	handler := setupTestHandler()
 
 	// 1. СОЗДАЁМ ТЕСТОВУЮ ПОДПИСКУ
@@ -291,6 +301,11 @@ func TestGetSubscriptionHandler(t *testing.T) {
 //   3. Проверяем статус ответа
 // ============================================================
 func TestUpdateSubscriptionHandler(t *testing.T) {
+	 if err := database.CleanTestTable(); err != nil {
+        t.Logf("Failed to clean table: %v", err)
+        t.Fatalf("Cannot continue test without clean table")
+    }
+    t.Log("Table cleaned successfully")
 	handler := setupTestHandler()
 
 	// 1. СОЗДАЁМ ТЕСТОВУЮ ПОДПИСКУ
@@ -348,6 +363,11 @@ func TestUpdateSubscriptionHandler(t *testing.T) {
 //   3. Проверяем статус ответа
 // ============================================================
 func TestDeleteSubscriptionHandler(t *testing.T) {
+	 if err := database.CleanTestTable(); err != nil {
+        t.Logf("Failed to clean table: %v", err)
+        t.Fatalf("Cannot continue test without clean table")
+    }
+    t.Log("Table cleaned successfully")
 	handler := setupTestHandler()
 
 	// 1. СОЗДАЁМ ПОДПИСКУ
@@ -404,6 +424,11 @@ func TestDeleteSubscriptionHandler(t *testing.T) {
 //   4. Проверяем, что в ответе минимум 3 записи
 // ============================================================
 func TestListSubscriptionsHandler(t *testing.T) {
+	 if err := database.CleanTestTable(); err != nil {
+        t.Logf("Failed to clean table: %v", err)
+        t.Fatalf("Cannot continue test without clean table")
+    }
+    t.Log("Table cleaned successfully")
 	handler := setupTestHandler()
 
 	// 1. ОЧИЩАЕМ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
@@ -471,14 +496,15 @@ func TestListSubscriptionsHandler(t *testing.T) {
 // ============================================================
 func TestGetTotalCostHandler(t *testing.T) {
 	handler := setupTestHandler()
-
+    // Очищаем ВСЮ таблицу перед тестом
+    if err := database.CleanTestTable(); err != nil {
+        t.Fatalf("Failed to clean table: %v", err)
+    }
+    t.Log("Table cleaned successfully")
+	
 	// ID пользователя для теста
 	userID := "550e8400-e29b-41d4-a716-446655440002"
 
-	// 1. ОЧИЩАЕМ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
-	if err := database.DeleteSubscriptionsByUserID(userID); err != nil {
-		t.Fatalf("Failed to clean test data: %v", err)
-	}
 
 	// 2. СОЗДАЁМ 3 ПОДПИСКИ
 	bodies := []struct {
@@ -566,7 +592,7 @@ func TestGetTotalCostHandler(t *testing.T) {
 		{"unknown service", userID, "NoSuchService", "01-2025", "12-2025", 0},
 
 		// Без фильтров: все подписки всех пользователей
-		{"empty user and service", "", "", "01-2025", "12-2025", 10400},
+		{"empty user and service", "", "", "01-2025", "12-2025", 6400},
 	}
 
 	// 4. ЗАПУСКАЕМ ВСЕ СЦЕНАРИИ

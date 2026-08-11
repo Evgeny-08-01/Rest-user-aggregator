@@ -101,12 +101,12 @@ func CleanTestTable() error {
         logger.Error("CleanTestTable: %v", err)
         return err
     }
-    _, err := db.Exec("TRUNCATE subscriptions RESTART IDENTITY")
+    _, err := db.Exec("TRUNCATE subscriptions, users RESTART IDENTITY")
     if err != nil {
-        logger.Error("CleanTestTable: failed to truncate table: %v", err)
+        logger.Error("CleanTestTable: failed to truncate tables: %v", err)
         return err
     }
-    logger.Debug("CleanTestTable: table truncated successfully")
+    logger.Debug("CleanTestTable: tables truncated successfully")
     return nil
 }
 // DeleteSubscriptionsByUserID удаляет все подписки пользователя (для тестов)
