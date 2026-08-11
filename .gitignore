@@ -35,3 +35,8 @@ docker-compose.override.yml
 # OS
 Thumbs.dbdatabase/
 /database/
+# Load test artifacts
+load-tests/
+target/
+load-test.sh
+*.bin
