@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/pkg/logger"
 	"github.com/google/uuid"
 )
 

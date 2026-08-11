@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/pkg/logger"
 )
 
 // CreateSubscription : 1 Метод== добавляет подписку в конец БД
@@ -185,9 +185,9 @@ func (r *PostgresRepo) GetTotalCost(ctx context.Context,userID, serviceName stri
         args = append(args, userID)
     }
     if serviceName != "" {
-        query += " AND service_name = $" + strconv.Itoa(len(args)+1)
-        args = append(args, serviceName)
-    }
+    query += " AND LOWER(service_name) LIKE LOWER($" + strconv.Itoa(len(args)+1) + ")"
+    args = append(args, "%" + serviceName + "%")
+}
 
     var total int
     err := r.db.QueryRowContext(ctx,query, args...).Scan(&total)

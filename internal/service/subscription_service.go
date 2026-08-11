@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/repository"
-	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/repository"
+	"Rest-user-agregator/pkg/logger"
 )
 type SubscriptionService struct {
     repo repository.SubscriptionRepository
@@ -30,6 +30,8 @@ func NewSubscriptionService(repo repository.SubscriptionRepository) *Subscriptio
 //   - total: суммарная стоимость (int)
 //   - error: ошибка, если парсинг дат не удался или диапазон невалидный
 func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceName, startDate, endDate string) (int, error) {
+    ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+    defer cancel()  
     // 1. Парсинг дат
     startDateTimeDB, err := parseDate(startDate)
     if err != nil {
@@ -61,6 +63,8 @@ func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceN
 //   3. Вызывает репозиторий для создания записи в БД
 // Возвращает: - id: идентификатор созданной подписки (int), - error: ошибка, если парсинг не удался или создание не удалось
  func (s *SubscriptionService) CreateSubscription(ctx context.Context, sub models.Subscription) (int, error) {
+    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+    defer cancel()
     startDate, err := parseDate(sub.StartDate)
     if err != nil {
         return 0, fmt.Errorf("invalid start_date: %w", err)
@@ -86,6 +90,8 @@ func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceN
 //   3. Вызывает репозиторий для обновления записи в БД
 // Возвращает: - error: ошибка, если парсинг не удался или обновление не удалось
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models.Subscription) error {
+    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+    defer cancel()
     startDate, err := parseDate(sub.StartDate)
     if err != nil {
         return fmt.Errorf("invalid start_date: %w", err)
@@ -126,6 +132,8 @@ func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int) (
 // Возвращает:
 //   - error: ошибка, если удаление не удалось или запись не найдена
 func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int) error {
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel()
     return s.repo.DeleteSubscription(ctx, id)
 }
 
@@ -141,6 +149,8 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int) er
 //   - []models.Subscription: слайс подписок (может быть пустым)
 //   - error: ошибка, если запрос к БД не удался
 func (s *SubscriptionService) ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+    defer cancel()
     return s.repo.ListSubscriptions(ctx, limit, offset)
 }
 // ============================================================

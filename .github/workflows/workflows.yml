@@ -1,11 +1,13 @@
-name: rest-user-agregator                # имя воркфлоу
+name: rest-user-agregator                
 on:                                       # запуск по заливке кода в главную ветку
-  push:                                   # запуск по пушь 
-    branches: [main]                      # запуск по пушу  в главную ветку
-    tags: [v*]                            # запуск по созданию тега (v1.0.0 и т. п.)
-  pull_request:
-    branches: [main]
-env:                                               # <-- ПЕРЕМЕННЫЕ ДЛЯ ВСЕГО ВОРКФЛОУ
+  #push:                                   # запуск по пушь 
+   # branches:                             # запуск по любому пушув любую ветку
+   # tags: [v*]                            # запуск по созданию тега (v1.0.0 и т. п.)
+  #pull_request:
+  #  branches: [main]
+  push:              # Все пуши во все ветки
+  pull_request:      # Все PR во все ветки
+env:                                              
   DB_PATH: postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable
   LOG_LEVEL: info
   ENV: docker
@@ -50,12 +52,9 @@ jobs:
           sleep 5                              
 # Запускаем Docker-контейнер в фоновом режиме (-d = detach)
 # Даём контейнеру имя "postgres" (чтобы обращаться по нему)
-# Устанавливаем пароль для пользователя postgres (по умолчанию пользователь postgres)
-# Создаём базу данных с именем testdb при старте контейнера
+# Устанавливаем пароль для пользователя postgres 
 # Пробрасываем порт: хост(снаружи):контейнер(внутри), чтобы подключаться с виртуалки
- # Ждём 5 секунд, чтобы PostgreSQL успел запуститься и стать доступным для подключения  
-
-
+# Ждём 5 секунд, чтобы PostgreSQL успел запуститься и стать доступным для подключения  
 # Используем официальный образ PostgreSQL версии 16 из Docker Hub
       - name: Build                       # название
         run: go build -v ./...            # компиляция бинарника
@@ -63,10 +62,10 @@ jobs:
         run: go test -v ./...             # запуск всех тестов
            
   job2:
-    name: publish                         # при добавлении тегов должен автоматически публиковать приложение в DockerHub.
-    runs-on: ubuntu-latest                # Указываем окружение
-    needs: job1                           # Задача test должна быть завершена до запуска publish
-    if: startsWith(github.ref, 'refs/tags/')  # Проверка, что тег начинается с "refs/tags"
+    name: publish                              # при добавлении тегов должен автоматически публиковать приложение в DockerHub.
+    runs-on: ubuntu-latest                     # Указываем окружение
+    needs: job1                                # Задача test должна быть завершена до запуска publish
+    if: startsWith(github.ref, 'refs/tags/')   # Проверка, что тег начинается с "refs/tags"
     steps:
       - name: Checkout                        # название
         uses: actions/checkout@v4             # Этот шаг использует действие "actions/checkout@v4", которое проверит текущий код в репозитории

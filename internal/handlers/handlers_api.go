@@ -6,19 +6,35 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/models"
-	"github.com/Evgeny-08-01/Rest-user-agregator/internal/service"
-	"github.com/Evgeny-08-01/Rest-user-agregator/pkg/logger"
+	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/service"
+	"Rest-user-agregator/pkg/logger"
 )
 
-// Handler - структура хендлера, принимающая репозиторий
+// ============================================================
+// Handler — структура, объединяющая все HTTP-обработчики
+// ============================================================
+// Содержит сервисы для работы с разными сущностями:
+//   - SubscriptionService → работа с подписками (CRUD, total-cost)
+//   - AuthService         → работа с пользователями (регистрация, логин, JWT)
+//
+// Все методы Handler используют эти сервисы для обработки запросов.
+// ============================================================
 type Handler struct {
-    Service *service.SubscriptionService
+    Service     *service.SubscriptionService // Сервис для подписок (уже был)
+    AuthService *service.AuthService         // Сервис для авторизации (НОВЫЙ)
 }
 
-// NewHandler - конструктор хендлера
-func NewHandler(svc *service.SubscriptionService) *Handler {
-    return &Handler{Service: svc}
+// ============================================================
+// NewHandler — конструктор хендлера
+// ============================================================
+// Принимает оба сервиса и возвращает инициализированный Handler.
+// ============================================================
+func NewHandler(svc *service.SubscriptionService, authSvc *service.AuthService) *Handler {
+    return &Handler{
+        Service:     svc,      // Сервис подписок
+        AuthService: authSvc,  // Сервис авторизации
+    }
 }
 // @Summary      Создать подписку
 // @Description  Добавляет новую подписку в базу данных
@@ -32,6 +48,11 @@ func NewHandler(svc *service.SubscriptionService) *Handler {
 // @Router       /subscriptions [post]
 // 1. CreateSubscriptionHandler-Хэндлер записи одной строки
 func (h *Handler) CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+    role := r.Context().Value("role").(string)
+if role != "admin" {
+    writeJSONError(w, http.StatusForbidden, "admin only")
+    return
+}
 	ctx := r.Context()
 	var req models.Subscription
 	// 1. Распарсить JSON
@@ -122,6 +143,11 @@ func (h *Handler) GetSubscriptionHandler(w http.ResponseWriter, r *http.Request)
 // @Router        /subscriptions/{id} [put]
 // 3. UpdateSubscriptionHandler-Хэндлер обновления одной строки
 func (h *Handler) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+   role := r.Context().Value("role").(string)
+if role != "admin" {
+    writeJSONError(w, http.StatusForbidden, "admin only")
+    return
+}
 	ctx := r.Context()
 	var req models.Subscription
 	// 1. Получить id из url
@@ -182,6 +208,11 @@ if err != nil {
 //   3. Вызывает сервис для удаления подписки из БД
 //   4. Возвращает статус операции или ошибку с соответствующим HTTP-статусом
 func (h *Handler) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
+   role := r.Context().Value("role").(string)
+if role != "admin" {
+    writeJSONError(w, http.StatusForbidden, "admin only")
+    return
+}
     ctx := r.Context()
     
     // 1. Получить id из URL

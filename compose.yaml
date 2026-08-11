@@ -11,8 +11,8 @@ services:
   # СЕРВИС: GO-ПРИЛОЖЕНИЕ (REST API)
   # ============================================================
   server:
-    healthcheck:                                   # проверка работы сервера через эндпоинт.."http://localhost:8080/health"
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    healthcheck:                    # проверка работы сервера через эндпоинт..http://localhost:${SERVER_PORT:-8087}/health
+      test: ["CMD", "curl", "-f", "http://localhost:${SERVER_PORT:-8087}/health"]     
       interval: 30s
       timeout: 5s
       retries: 3
@@ -33,7 +33,7 @@ services:
     env_file: 
       - .env                                         # берём данные окружения из файла .env на ПК
     ports:
-      - "8080:8080"                                  # задаём порты
+     - "${SERVER_PORT:-8087}:${SERVER_PORT:-8087}"                                  # задаём порты
     depends_on:
       db:
         condition: service_healthy                    # контейнер server запустится только после того, как БД станет healthy
@@ -57,7 +57,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}        # взять пароль из .env
       POSTGRES_DB: ${POSTGRES_DB}                    # взять имя БД из .env
     ports:
-      - "5432:5432"                                  # пробросить порт взаимодействия БД с ПК
+     - "${POSTGRES_PORT:-5432}:5432"                                   # пробросить порт взаимодействия БД с ПК в БД-жестко
     volumes:
       - postgres-db:/var/lib/postgresql/data         # связываем том postgres-db с папкой данных БД внутри контейнера (данные сохраняются на ПК, даже если контейнер удалён)
     healthcheck:
@@ -67,13 +67,34 @@ services:
       retries: 5                                     # 5 попыток (максимум 50 секунд)
     networks:
       - app-network                                  # внутренняя сеть для общения с сервером
-
+ # ============================================================
+  # СЕРВИС: grafana
+  # ============================================================      
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - app-network
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - app-network    
 # ============================================================
 # ОБЪЯВЛЕНИЕ ТОМОВ (хранилища данных)
 # ============================================================
 volumes:
   postgres-db:                                       # именованный том для PostgreSQL на ПК (создаётся и управляется Docker)
     driver: local                                    # явно указываем локальный драйвер (значение по умолчанию)
+  grafana-data: 
 
 # ============================================================
 # ОБЪЯВЛЕНИЕ СЕТЕЙ (внутренняя изоляция контейнеров)
@@ -81,3 +102,5 @@ volumes:
 networks:
   app-network:
     driver: bridge                                   # стандартная сеть между контейнерами (изолирует их от внешнего мира)
+
+  
