@@ -60,6 +60,7 @@ docker-compose up --build
 
 | Команда                    | Описание                                                    |
 |----------------------------|-------------------------------------------------------------|
+| `make help`                | Показать все команды                                        |
 | `make test-u`              | Юнит-тесты (с моками, без БД) — быстро                      |
 | `make test-int`            | Интеграционные тесты (с БД, автоматически запускает Docker) |
 | `make test-all`            | Сначала юнит, потом интеграционные                          |
@@ -70,7 +71,10 @@ docker-compose up --build
 | `make docker-logs`         | Просмотр логов всех контейнеров                             |
 | `make docker-logs-server`  | Просмотр логов только сервера                               |
 | `make clean`               | Очистка артефактов сборки (bin/, coverage/, cache)          |
-| `make help`                | Показать все команды                                        |
+| `make migrate-up`          | Применить все миграции                                      |
+| `make migrate-down`        | Откатить все миграции                                       |
+| `make migrate-down-users`  | Откатить только таблицу `users`                             |
+| `make migrate-down-subs`   | Откатить только таблицу `subscriptions`                     |
 
 Сервер будет доступен по адресу: http://localhost:8080
 
@@ -183,8 +187,11 @@ make test-all
 
 Миграции применяются автоматически при запуске сервера.
 
-- Up migration: `migrations/000001_create_subscriptions_table.up.sql`
-- Down migration: `migrations/000001_create_subscriptions_table.down.sql`
+| `migrations/000001_create_subscriptions_table.up.sql`   | Создание таблицы подписок      |
+| `migrations/000001_create_subscriptions_table.down.sql` | Удаление таблицы подписок      |
+| `migrations/000002_create_users_table.up.sql`           | Создание таблицы пользователей |
+| `migrations/000002_create_users_table.down.sql`         | Удаление таблицы пользователей |
+
 
 ### Откат миграций
 
@@ -200,34 +207,82 @@ go run cmd/api/main.go -down
 Rest-user-agregator/
 ├── .github/
 │   └── workflows/
-│       └── workflows.yml    # GitHub Actions CI/CD
+│       └── workflows.yml                  # GitHub Actions CI/CD
 ├── cmd/
-│   └── api/                 # Точка входа
-│       └── main.go
+│   └── api/
+│       └── main.go                        # Точка входа
 ├── internal/
-│   ├── database/            # Инициализация БД + CRUDL + PostgresRepo
-│   ├── handlers/            # HTTP хэндлеры + хелперы + тесты
-│   ├── models/              # Модели данных
-│   ├── repository/          # Интерфейс репозитория + моки
+│   ├── authentication/                    # JWT, middleware, тесты
+│   │   ├── jwt.go
+│   │   ├── jwt_test.go
+│   │   ├── middleware.go
+│   │   └── middleware_test.go
+│   ├── database/                          # Инициализация БД + CRUDL + PostgresRepo
+│   │   ├── database.go
+│   │   ├── database_CRUDL_func.go
+│   │   ├── migrations.go
+│   │   └── user_repo.go
+│   ├── handlers/                          # HTTP хэндлеры + хелперы + тесты
+│   │   ├── auth.go
+│   │   ├── handlers_api.go
+│   │   ├── handlers_integration_test.go
+│   │   ├── handlers_unit_test.go
+│   │   └── helpers.go
+│   ├── metrics/                           # Prometheus метрики
+│   │   └── metrics.go
+│   ├── middleware/                        # CORS и метрики middleware
+│   │   ├── cors.go
+│   │   └── metrics.go
+│   ├── models/                            # Модели данных
+│   │   ├── subscriptions.go
+│   │   └── user.go
+│   ├── repository/                        # Интерфейсы репозиториев + моки
 │   │   ├── interface.go
-│   │   └── mock.go          # Мок для тестов
-│   └── service/             # Бизнес-логика
+│   │   └── mock.go
+│   └── service/                           # Бизнес-логика
+│       ├── auth_service.go
+│       ├── auth_service_test.go
 │       └── subscription_service.go
-├── migrations/              # SQL миграции
-├── docs/                    # Swagger документация
-├── pkg/
-│   └── logger/              # Логирование с уровнями
-├── technical requirements/  # Техническое задание
+├── migrations/                            # SQL миграции
+│   ├── 000001_create_subscriptions_table.up.sql
+│   ├── 000001_create_subscriptions_table.down.sql
+│   ├── 000002_create_users_table.up.sql
+│   └── 000002_create_users_table.down.sql
+├── web/                                   # Фронтенд (HTML + CSS + JS)
+│   ├── css/
+│   │   └── style.css
+│   ├── js/
+│   │   ├── api.js
+│   │   ├── app.js
+│   │   ├── auth.js
+│   │   ├── components.js
+│   │   └── utils.js
+│   └── index.html
+├── docs/                                  # Swagger документация
+│   ├── docs.go
+│   ├── swagger.json
+│   └── swagger.yaml
+├── screenshots/                           # Скриншоты Grafana для README
+│   ├── grafana_errors.png
+│   ├── grafana_p95.png
+│   └── grafana_rps.png
+├── technical_requirements/                # Техническое задание
 │   └── technical requirements.txt
-├── compose.yaml             # Docker Compose
-├── Makefile                 # Управление проектом
-├── .env.example             # Пример конфигурации
-├── .env.test                # Тестовое окружение
-├── .gitignore               # Игнорируемые файлы
-├── .dockerignore            # Игнорируемые файлы для Docker
-├── Dockerfile               # Docker образ
-├── go.mod                   # Зависимости
-└── go.sum                   # Контрольные суммы зависимостей
+├── pkg/
+│   └── logger/                            # Логирование с уровнями
+│       ├── logger.go
+│       └── logger_test.go
+├── compose.yaml                           # Docker Compose
+├── Makefile                               # Управление проектом
+├── Dockerfile                             # Docker образ
+├── prometheus.yml                         # Конфиг Prometheus
+├── .env.example                           # Пример конфигурации
+├── .env.test                              # Тестовое окружение
+├── .gitignore                             # Игнорируемые файлы
+├── .dockerignore                          # Игнорируемые файлы для Docker
+├── go.mod                                 # Зависимости
+├── go.sum                                 # Контрольные суммы зависимостей
+└── README.md                              # Документация проекта
 ```
 ## Переменные окружения
 

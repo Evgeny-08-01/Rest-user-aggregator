@@ -1,127 +1,161 @@
 # ============================================================
 # MAKE FILE FOR REST USER AGREGATOR
 # ============================================================
+#
 # Commands:
-#   make test-u        - Run unit tests (tag: unit)
-#   make test-int      - Run integration tests (tag: integration) - starts DB
-#   make test-all      - Run unit tests first, then integration tests
-#   make run           - Run server locally
-#   make build         - Build binary
-#   make docker-up     - Start all containers
-#   make docker-down   - Stop all containers
-#   make docker-up-db  - Start only PostgreSQL
-#   make help          - Show all available commands
+#   make test-u              - Run unit tests (with mocks, no DB)
+#   make test-int            - Run integration tests (with DB, auto-start Docker)
+#   make test-all            - Run unit tests first, then integration tests
+#   make build               - Build the Go binary
+#   make run                 - Start the server locally (with DB via Docker)
+#   make docker-up           - Start all containers
+#   make docker-down         - Stop all containers
+#   make docker-up-db        - Start only PostgreSQL
+#   make docker-logs         - View logs from all containers
+#   make docker-logs-server  - View logs from server container only
+#   make clean               - Clean build artifacts (bin/, coverage/, cache)
+#   make help                - Show all available commands
+#
+# Migration commands:
+#   make migrate-up          - Apply all migrations
+#   make migrate-down        - Rollback all migrations
+#   make migrate-down-users  - Rollback only users table
+#   make migrate-down-subs   - Rollback only subscriptions table
+#
 # ============================================================
 
-.PHONY: test-u test-int test-all run build docker-up docker-down docker-up-db help
+# ============================================================
+# VARIABLES
+# ============================================================
+BINARY_NAME=subscription_app
+COVERAGE_FILE=coverage.out
 
-# -------------------- TESTS --------------------
+# ============================================================
+# TESTING
+# ============================================================
 
-# Unit tests (tag: unit) - runs only tests with build tag "unit"
-test-u:
+.PHONY: test-u
+test-u: ## Run unit tests (with mocks, no database)
 	@echo "========================================="
 	@echo "  RUNNING UNIT TESTS (tag: unit)"
 	@echo "========================================="
 	go test ./internal/handlers -tags=unit -v
-	go test ./pkg/logger -v 
 
-# Integration tests (tag: integration) - starts DB and waits (max 30s)
-test-int:
+.PHONY: test-int
+test-int: ## Run integration tests (with real DB via Docker)
 	@echo "========================================="
 	@echo "  RUNNING INTEGRATION TESTS (tag: integration)"
 	@echo "========================================="
-	@echo "[RUN] Starting DB..."
-	docker-compose up -d db
-	@echo "[RUN] Waiting for DB to be ready (timeout: 30s)..."
-	@for i in $$(seq 1 30); do \
-		if docker exec subscription-db pg_isready -U postgres; then \
-			echo "[RUN] DB is ready."; \
-			break; \
-		fi; \
-		sleep 1; \
-		if [ $$i -eq 30 ]; then \
-			echo "[ERR] Timeout: DB did not start within 30 seconds."; \
-			exit 1; \
-		fi; \
-	done
-	go test ./internal/handlers ./cmd/api -tags=integration -v
+	go test -tags=integration -p 1 -count=1 ./...
 
-# All tests: unit first, then integration
-test-all:
+.PHONY: test-all
+test-all: test-u test-int ## Run unit tests first, then integration tests
+
+# ============================================================
+# BUILD
+# ============================================================
+
+.PHONY: build
+build: ## Build the Go binary
 	@echo "========================================="
-	@echo "  RUNNING ALL TESTS"
+	@echo "  BUILDING BINARY"
 	@echo "========================================="
-	$(MAKE) test-u && $(MAKE) test-int
-# -------------------- BUILD --------------------
+	go build -o $(BINARY_NAME) ./cmd/api/main.go
 
-# Build the binary
-build:
-	@echo "[RUN] Building binary..."
-	go build -o bin/subscription_app cmd/api/main.go
+# ============================================================
+# RUN (LOCAL)
+# ============================================================
 
-# -------------------- DOCKER --------------------
+.PHONY: run
+run: ## Start the server locally (DB via Docker)
+	@echo "[RUN] Checking Docker..."
+	make docker-up-db
+	@echo "[RUN] Starting server locally..."
+	go run cmd/api/main.go
 
-# Start all containers
-docker-up:
-	@echo "[RUN] Starting containers..."
+# ============================================================
+# DOCKER
+# ============================================================
+
+.PHONY: docker-up
+docker-up: ## Start all containers
 	docker-compose up -d
 
-# Stop all containers
-docker-down:
-	@echo "[RUN] Stopping containers..."
+.PHONY: docker-down
+docker-down: ## Stop all containers
 	docker-compose down
 
-# Start only the database
-docker-up-db:
-	@echo "[RUN] Starting DB..."
+.PHONY: docker-up-db
+docker-up-db: ## Start only PostgreSQL
 	docker-compose up -d db
 
-# View logs from all containers
-docker-logs:
-	@echo "[RUN] Showing logs (Ctrl+C to exit)..."
+.PHONY: docker-logs
+docker-logs: ## View logs from all containers
 	docker-compose logs -f
 
-# View logs only from server
-docker-logs-server:
-	@echo "[RUN] Showing server logs (Ctrl+C to exit)..."
-	docker-compose logs -f server
+.PHONY: docker-logs-server
+docker-logs-server: ## View logs from server container only
+	docker logs subscription-api -f
 
-# -------------------- CLEAN --------------------
+# ============================================================
+# MIGRATIONS
+# ============================================================
 
-# Clean all build artifacts (bin/, coverage/, cache)
-clean:
+.PHONY: migrate-up
+migrate-up: ## Apply all migrations (subscriptions + users)
 	@echo "========================================="
-	@echo "  CLEANING BUILD ARTIFACTS"
+	@echo "  APPLYING ALL MIGRATIONS"
 	@echo "========================================="
-	@echo "[RUN] Removing bin/..."
-	rm -rf bin/
-	@echo "[RUN] Removing coverage/..."
-	rm -rf coverage/
-	@echo "[RUN] Removing coverage files..."
-	rm -f coverage.out coverage.html
-	@echo "[RUN] Cleaning Go cache..."
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_subscriptions_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_users_table.up.sql
+	@echo "✅ Migrations applied."
+
+.PHONY: migrate-down
+migrate-down: ## Rollback all migrations (users first, then subscriptions)
+	@echo "========================================="
+	@echo "  ROLLING BACK ALL MIGRATIONS"
+	@echo "========================================="
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_users_table.down.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_subscriptions_table.down.sql
+	@echo "✅ All migrations rolled back."
+
+.PHONY: migrate-down-users
+migrate-down-users: ## Rollback only users table
+	@echo "========================================="
+	@echo "  ROLLING BACK USERS TABLE"
+	@echo "========================================="
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_users_table.down.sql
+	@echo "✅ Users table dropped."
+
+.PHONY: migrate-down-subs
+migrate-down-subs: ## Rollback only subscriptions table
+	@echo "========================================="
+	@echo "  ROLLING BACK SUBSCRIPTIONS TABLE"
+	@echo "========================================="
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_subscriptions_table.down.sql
+	@echo "✅ Subscriptions table dropped."
+
+# ============================================================
+# CLEANUP
+# ============================================================
+
+.PHONY: clean
+clean: ## Clean build artifacts (bin/, coverage/, cache)
+	@echo "========================================="
+	@echo "  CLEANING UP"
+	@echo "========================================="
+	rm -f $(BINARY_NAME)
+	rm -f $(COVERAGE_FILE)
 	go clean -cache
-	go clean -testcache
-	@echo "[RUN] Tidying go.mod..."
-	go mod tidy
-	@echo "========================================="
-	@echo "  CLEAN COMPLETE! 
-	@echo "========================================="
+	@echo "✅ Cleanup done."
 
-# -------------------- HELP --------------------
+# ============================================================
+# HELP
+# ============================================================
 
-# Show all available commands
-help:
+.PHONY: help
+help: ## Show all available commands
 	@echo "========================================="
 	@echo "  AVAILABLE COMMANDS"
 	@echo "========================================="
-	@echo "  make test-u        - Unit tests (tag: unit) - fast, no DB"
-	@echo "  make test-int      - Integration tests (tag: integration) - starts DB"
-	@echo "  make test-all      - Unit tests first, then integration"
-	@echo "  make run           - Run server locally"
-	@echo "  make build         - Build binary"
-	@echo "  make docker-up     - Start containers"
-	@echo "  make docker-down   - Stop containers"
-	@echo "  make docker-up-db  - Start only DB"
-	@echo "  make help          - Show this help"
-	@echo "========================================="
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
