@@ -200,8 +200,9 @@ func startServer() error {
 // ВРЕМЕННО ДЛЯ PPROF
 // ============================================================
 go func() {
-    logger.Info("pprof server listening on :6060")
-    http.ListenAndServe(":6060", nil)
+    if err := http.ListenAndServe(":6060", nil); err != nil {
+        log.Printf("pprof server error: %v", err)
+    }
 }()
 // ============================================================
     mux.Handle("/metrics", promhttp.Handler())

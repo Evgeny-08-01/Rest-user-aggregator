@@ -45,6 +45,9 @@ func TestMain(m *testing.M) {
 	//    Файл .env.test лежит в корне проекта (на два уровня выше)
 	//    Если файл не найден — тесты пропускаются (но не падают)
 	godotenv.Load("../../.env.test")
+	if err := godotenv.Load("../../.env.test"); err != nil {
+    log.Println("WARNING: .env.test not found, using env vars")
+}
 	log.Println("LOG_LEVEL from env.test:", os.Getenv("LOG_LEVEL"))
 	logger.Init(os.Getenv("LOG_PATH"), os.Getenv("LOG_LEVEL"))
 	
@@ -263,7 +266,9 @@ func TestGetSubscriptionHandler(t *testing.T) {
 
 	// 2. ИЗВЛЕКАЕМ ID СОЗДАННОЙ ПОДПИСКИ
 	var resp map[string]int
-	json.NewDecoder(w.Body).Decode(&resp)
+if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+    t.Fatalf("Failed to decode response: %v", err)
+}
 	id := resp["id"]
 
 	// 3. СУБТЕСТ: УСПЕШНОЕ ПОЛУЧЕНИЕ
@@ -343,7 +348,9 @@ func TestUpdateSubscriptionHandler(t *testing.T) {
 
 	// 2. ИЗВЛЕКАЕМ ID
 	var resp map[string]int
-	json.NewDecoder(w.Body).Decode(&resp)
+if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+    t.Fatalf("Failed to decode response: %v", err)
+}
 	id := resp["id"]
 
 	// 3. СУБТЕСТ: УСПЕШНОЕ ОБНОВЛЕНИЕ
@@ -408,7 +415,9 @@ func TestDeleteSubscriptionHandler(t *testing.T) {
 
 	// 2. ИЗВЛЕКАЕМ ID
 	var resp map[string]int
-	json.NewDecoder(w.Body).Decode(&resp)
+if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+    t.Fatalf("Failed to decode response: %v", err)
+}
 	id := resp["id"]
 
 	// 3. СУБТЕСТ: УСПЕШНОЕ УДАЛЕНИЕ
