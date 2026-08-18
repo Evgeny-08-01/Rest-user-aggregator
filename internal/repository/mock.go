@@ -17,6 +17,8 @@ type MockSubRepo struct {
 	DeleteSubMock    func(ctx context.Context, id int) error
 	ListSubMock      func(ctx context.Context, limit, offset int) ([]models.Subscription, error)
 	GetTotalCostMock func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
+	GetCacheUserVersionMock      func(ctx context.Context, userID string) (int, error)
+    IncrementCacheUserVersionMock func(ctx context.Context, userID string) error
 }
 
 // Реализация методов интерфейса SubscriptionRepository
@@ -63,4 +65,17 @@ func (m *MockSubRepo) GetTotalCost(ctx context.Context, userID, serviceName stri
 		return m.GetTotalCostMock(ctx, userID, serviceName, startDate, endDate)
 	}
 	return 0, errors.New("GetTotalCostMock not mocked")
+}
+func (m *MockSubRepo) GetCacheUserVersion(ctx context.Context, userID string) (int, error) {
+	if m.GetCacheUserVersionMock != nil {
+		return m.GetCacheUserVersionMock(ctx, userID)
+	}
+	return 1, nil // дефолтное значение
+}
+
+func (m *MockSubRepo) IncrementCacheUserVersion(ctx context.Context, userID string) error {
+	if m.IncrementCacheUserVersionMock != nil {
+		return m.IncrementCacheUserVersionMock(ctx, userID)
+	}
+	return nil
 }

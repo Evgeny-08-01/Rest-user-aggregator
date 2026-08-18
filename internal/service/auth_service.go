@@ -36,12 +36,12 @@ func NewAuthService(repo repository.UserRepository) *AuthService {
 //
 // ПАРАМЕТРЫ:
 //   - ctx: контекст запроса.
-//          Отменяется при:
-//            - Ctrl+C (SIGINT)
-//            - выключении ОС (SIGTERM)
-//            - закрытии браузера
-//            - истечении таймаута
-//  Используется для передачи данных (user_id) и отмены операций.
+//     Отменяется при:
+//   - Ctrl+C (SIGINT)
+//   - выключении ОС (SIGTERM)
+//   - закрытии браузера
+//   - истечении таймаута
+//     Используется для передачи данных (user_id) и отмены операций.
 //   - email: email пользователя (обязательно)
 //   - password: пароль (обязательно, минимум 6 символов)
 //   - role: роль пользователя (по умолчанию "user")
@@ -50,10 +50,11 @@ func NewAuthService(repo repository.UserRepository) *AuthService {
 //   - error: ошибка, если валидация не пройдена или пользователь уже существует
 //
 // ЛОГИКА:
-//   1. Валидация email и password
-//   2. Проверка, что пользователь не существует
-//   3. Хеширование пароля (bcrypt)
-//   4. Сохранение пользователя в БД
+//  1. Валидация email и password
+//  2. Проверка, что пользователь не существует
+//  3. Хеширование пароля (bcrypt)
+//  4. Сохранение пользователя в БД
+//
 // ============================================================
 func (s *AuthService) Register(ctx context.Context, email, password, role string) error {
 	// 1. Валидация входных данных
@@ -65,9 +66,9 @@ func (s *AuthService) Register(ctx context.Context, email, password, role string
 		logger.Warn("AuthService.Register: password is required")
 		return errors.New("password is required")
 	}
-	if len(password) < 6 {
+	if len(password) < 4 {
 		logger.Warn("AuthService.Register: password too short: %d chars", len(password))
-		return errors.New("password must be at least 6 characters")
+		return errors.New("password must be at least 4 characters.")
 	}
 
 	// 2. Проверяем, существует ли пользователь с таким email
@@ -92,11 +93,11 @@ func (s *AuthService) Register(ctx context.Context, email, password, role string
 	if role == "" {
 		role = "user"
 	}
-    // Запрет на создание админа через API
-    if role == "admin" {
-    logger.Warn("AuthService.Register: attempt to create admin via API: %s", email)
-    return errors.New("admin role cannot be created via API")
-  }
+	// Запрет на создание админа через API
+	if role == "admin" {
+		logger.Warn("AuthService.Register: attempt to create admin via API: %s", email)
+		return errors.New("admin role cannot be created via API")
+	}
 	// 5. Создаём пользователя
 	user := models.User{
 		ID:       uuid.New().String(),
@@ -131,11 +132,12 @@ func (s *AuthService) Register(ctx context.Context, email, password, role string
 //   - error: ошибка, если credentials неверны
 //
 // ЛОГИКА:
-//   1. Валидация email и password
-//   2. Поиск пользователя в БД по email
-//   3. Проверка пароля (bcrypt)
-//   4. Генерация JWT-токена
-//   5. Возврат токена и роли
+//  1. Валидация email и password
+//  2. Поиск пользователя в БД по email
+//  3. Проверка пароля (bcrypt)
+//  4. Генерация JWT-токена
+//  5. Возврат токена и роли
+//
 // ============================================================
 func (s *AuthService) Login(ctx context.Context, email, password string) (string, string, error) {
 	// 1. Валидация входных данных

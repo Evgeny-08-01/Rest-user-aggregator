@@ -29,7 +29,14 @@ import (
 	"context"       // Для передачи контекста в методы
 	"testing"       // Стандартный пакет для тестов
 	"time"          // Для работы с датами
+	"errors"
 
+
+
+    "Rest-user-agregator/internal/cache"
+    "Rest-user-agregator/internal/repository"
+    "Rest-user-agregator/internal/service"
+    "github.com/go-redis/redis/v9"
 	"Rest-user-agregator/internal/models"       // Модели данных
 )
 
@@ -63,7 +70,10 @@ type mockRepo struct {
 // Если задана — вызывает её и возвращает результат.
 // Если не задана — возвращает значение по умолчанию или ошибку.
 // ============================================================
-
+var (
+    originalCacheGet = cache.Get
+    originalCacheSet = cache.Set
+)
 // CreateSubscription — заглушка для создания подписки
 func (m *mockRepo) CreateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
 	if m.createFunc != nil {
@@ -359,4 +369,219 @@ func TestGetTotalCost(t *testing.T) {
 	if total != 1500 {
 		t.Errorf("Expected 1500, got %d", total)
 	}
+}
+// ============================================================
+// ТЕСТЫ КЕШИРОВАНИЯ ДЛЯ GetTotalCost (ЮНИТ-ТЕСТЫ С МОКАМИ)
+// ============================================================
+//
+// Эти тесты проверяют логику работы кеша без реального Redis.
+// Все вызовы cache.Get и cache.Set заменены на моки.
+// ============================================================
+
+// TestGetTotalCost_CacheHit — проверяет, что при наличии кеша
+// возвращается значение из Redis, а БД не вызывается.
+//
+// Сценарий:
+//   1. Мокаем cache.Get на возврат 500 (кеш-попадание).
+//   2. Мокаем репозиторий, чтобы он падал, если его вызовут.
+//   3. Вызываем GetTotalCost.
+//   4. Проверяем, что вернулось 500 и репозиторий не вызывался.
+func TestGetTotalCost_CacheHit(t *testing.T) {
+    // 1. СОЗДАЁМ МОК РЕПОЗИТОРИЯ
+    mockRepo := &repository.MockSubRepo{}
+    
+    // 2. НАСТРАИВАЕМ МОК: ЕСЛИ БУДЕТ ВЫЗОВ — ТЕСТ УПАДЁТ
+    //    Это гарантирует, что при кеш-попадании мы НЕ идём в БД.
+    mockRepo.GetTotalCostMock = func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
+        t.Error("Repository should not be called on cache hit")
+        return 0, nil
+    }
+
+    // 3. МОКАЕМ cache.Get (возвращаем значение 500)
+    //    cacheGetMock — переменная в пакете cache, которую мы подменяем в тесте.
+    //    В реальном коде это делается через интерфейс, но для простоты используем
+    //    глобальную переменную-заглушку.
+    cache.Get = func(ctx context.Context, key string) (int, error) {
+        return 500, nil
+    }
+    defer func() { cache.Get = originalCacheGet }() // Восстанавливаем оригинал
+
+    // 4. ВЫЗЫВАЕМ GetTotalCost
+    svc := service.NewSubscriptionService(mockRepo)
+    result, err := svc.GetTotalCost(
+        context.Background(),
+        "test-user",
+        "test-service",
+        "01-2025",
+        "12-2025",
+    )
+
+    // 5. ПРОВЕРЯЕМ РЕЗУЛЬТАТ
+    if err != nil {
+        t.Errorf("Expected no error, got %v", err)
+    }
+    if result != 500 {
+        t.Errorf("Expected 500, got %d", result)
+    }
+}
+
+// TestGetTotalCost_CacheMiss — проверяет, что при кеш-промахе
+// идём в БД и сохраняем результат в Redis.
+//
+// Сценарий:
+//   1. Мокаем cache.Get на возврат ошибки redis.Nil (ключа нет).
+//   2. Мокаем репозиторий на возврат 1000.
+//   3. Мокаем cache.Set на успех.
+//   4. Вызываем GetTotalCost.
+//   5. Проверяем, что результат = 1000 и cache.Set был вызван.
+func TestGetTotalCost_CacheMiss(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.GetTotalCostMock = func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
+        return 1000, nil
+    }
+
+    // 1. Мокаем cache.Get на ошибку redis.Nil (ключа нет)
+    cache.Get = func(ctx context.Context, key string) (int, error) {
+        return 0, redis.Nil
+    }
+    defer func() { cache.Get = originalCacheGet }()
+
+    // 2. Мокаем cache.Set на успех (сохраняем результат)
+    cacheSetCalled := false
+    cache.Set = func(ctx context.Context, key string, value int, ttl time.Duration) error {
+        cacheSetCalled = true
+        return nil
+    }
+    defer func() { cache.Set = originalCacheSet }()
+
+    // 3. ВЫЗЫВАЕМ GetTotalCost
+    svc := service.NewSubscriptionService(mockRepo)
+    result, err := svc.GetTotalCost(
+        context.Background(),
+        "test-user",
+        "test-service",
+        "01-2025",
+        "12-2025",
+    )
+
+    // 4. ПРОВЕРЯЕМ РЕЗУЛЬТАТ
+    if err != nil {
+        t.Errorf("Expected no error, got %v", err)
+    }
+    if result != 1000 {
+        t.Errorf("Expected 1000, got %d", result)
+    }
+    if !cacheSetCalled {
+        t.Error("Expected cache.Set to be called, but it wasn't")
+    }
+}
+
+// TestGetTotalCost_RedisError — проверяет, что при ошибке Redis
+// (не redis.Nil, а реальная ошибка) мы идём в БД и не падаем.
+//
+// Сценарий:
+//   1. Мокаем cache.Get на ошибку (таймаут).
+//   2. Мокаем репозиторий на успех.
+//   3. Вызываем GetTotalCost.
+//   4. Проверяем, что результат из БД, а ошибка Redis залогирована.
+func TestGetTotalCost_RedisError(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.GetTotalCostMock = func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
+        return 2000, nil
+    }
+
+    // 1. Мокаем cache.Get на ошибку (таймаут)
+    cache.Get = func(ctx context.Context, key string) (int, error) {
+        return 0, errors.New("redis timeout")
+    }
+    defer func() { cache.Get = originalCacheGet }()
+
+    // 2. ВЫЗЫВАЕМ GetTotalCost
+    svc := service.NewSubscriptionService(mockRepo)
+    result, err := svc.GetTotalCost(
+        context.Background(),
+        "test-user",
+        "test-service",
+        "01-2025",
+        "12-2025",
+    )
+
+    // 3. ПРОВЕРЯЕМ РЕЗУЛЬТАТ (должны получить из БД)
+    if err != nil {
+        t.Errorf("Expected no error, got %v", err)
+    }
+    if result != 2000 {
+        t.Errorf("Expected 2000, got %d", result)
+    }
+}
+
+// TestGetTotalCost_VersionError — проверяет, что при ошибке получения
+// версии из БД кеш отключается и мы идём напрямую в БД.
+//
+// Сценарий:
+//   1. Мокаем GetCacheUserVersion на ошибку.
+//   2. Мокаем репозиторий на успех.
+//   3. Вызываем GetTotalCost.
+//   4. Проверяем, что результат из БД, а cache.Get НЕ вызывался.
+func TestGetTotalCost_VersionError(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+    mockRepo.GetTotalCostMock = func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
+        return 3000, nil
+    }
+    // Мокаем ошибку получения версии
+    mockRepo.GetCacheUserVersionMock = func(ctx context.Context, userID string) (int, error) {
+        return 0, errors.New("db error")
+    }
+
+    // 1. cache.Get НЕ ДОЛЖЕН вызываться — если вызовется, тест упадёт
+    cache.Get = func(ctx context.Context, key string) (int, error) {
+        t.Error("cache.Get should not be called when version retrieval fails")
+        return 0, nil
+    }
+    defer func() { cache.Get = originalCacheGet }()
+
+    // 2. ВЫЗЫВАЕМ GetTotalCost
+    svc := service.NewSubscriptionService(mockRepo)
+    result, err := svc.GetTotalCost(
+        context.Background(),
+        "test-user",
+        "test-service",
+        "01-2025",
+        "12-2025",
+    )
+
+    // 3. ПРОВЕРЯЕМ РЕЗУЛЬТАТ (из БД)
+    if err != nil {
+        t.Errorf("Expected no error, got %v", err)
+    }
+    if result != 3000 {
+        t.Errorf("Expected 3000, got %d", result)
+    }
+}
+
+// TestGetTotalCost_InvalidDate — проверяет обработку невалидных дат.
+//
+// Сценарий:
+//   1. Передаём невалидную start_date.
+//   2. Ожидаем ошибку, БД и кеш не трогаем.
+func TestGetTotalCost_InvalidDate(t *testing.T) {
+    mockRepo := &repository.MockSubRepo{}
+
+    // 1. ВЫЗЫВАЕМ GetTotalCost с невалидной датой
+    svc := service.NewSubscriptionService(mockRepo)
+    result, err := svc.GetTotalCost(
+        context.Background(),
+        "test-user",
+        "test-service",
+        "invalid-date", // невалидный формат
+        "12-2025",
+    )
+
+    // 2. ПРОВЕРЯЕМ, ЧТО ВЕРНУЛАСЬ ОШИБКА
+    if err == nil {
+        t.Error("Expected error for invalid date, got nil")
+    }
+    if result != 0 {
+        t.Errorf("Expected 0, got %d", result)
+    }
 }

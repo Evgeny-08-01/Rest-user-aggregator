@@ -27,8 +27,10 @@ import (
 	"os"            // Для завершения тестов с кодом
 	"testing"       // Стандартный пакет для тестов
 	"time"          // Для парсинга дат
+	"fmt"
 
 	"Rest-user-agregator/internal/models" // Наши модели данных
+	"github.com/google/uuid"
 )
 
 // ============================================================
@@ -142,13 +144,12 @@ func TestCreateUser(t *testing.T) {
 
 	// 2. ПОДГОТАВЛИВАЕМ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ
 	//    ID — UUID, Email — уникальный, Password — хеш
-	user := models.User{
-		ID:       "550e8400-e29b-41d4-a716-446655440000",
-		Email:    "test_create@mail.com",
-		Password: "hash123",
-		Role:     "user",
-	}
-
+    user := models.User{
+    ID:       uuid.New().String(),
+    Email:    fmt.Sprintf("test_%d@mail.com", time.Now().UnixNano()),
+    Password: "hash123",
+    Role:     "user",
+}
 	// 3. ВЫЗЫВАЕМ МЕТОД СОЗДАНИЯ
 	//    context.Background() — пустой контекст для тестов
 	err := repo.CreateUser(context.Background(), user)

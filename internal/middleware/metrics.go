@@ -19,10 +19,12 @@
 package middleware
 
 import (
-    "net/http"
-    "time"
+	"net/http"
+	"time"
 
-    "Rest-user-agregator/internal/metrics"
+	"Rest-user-agregator/internal/authentication"
+	"Rest-user-agregator/internal/metrics"
+	"Rest-user-agregator/pkg/logger"
 )
 
 // ============================================================
@@ -58,6 +60,12 @@ func MetricsMiddleware(next http.HandlerFunc) http.HandlerFunc {
         //    Передаём ему нашу обёртку вместо оригинального w.
         //    Хендлер будет писать ответ через неё, а мы сможем
         //    перехватить статус-код.
+       logger.Debug("MetricsMiddleware: before next, user_id=%v, email=%v, role=%v",
+    r.Context().Value(authentication.UserIDKey),
+    r.Context().Value(authentication.EmailKey),
+    r.Context().Value(authentication.RoleKey),
+
+) 
         next(rw, r)
 
         // 4. СЧИТАЕМ ДЛИТЕЛЬНОСТЬ

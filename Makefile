@@ -15,13 +15,14 @@
 #   make docker-logs-server  - View logs from server container only
 #   make clean               - Clean build artifacts (bin/, coverage/, cache)
 #   make help                - Show all available commands
+#   mart stop                - stop local server
 #
 # Migration commands:
 #   make migrate-up          - Apply all migrations
 #   make migrate-down        - Rollback all migrations
 #   make migrate-down-users  - Rollback only users table
 #   make migrate-down-subs   - Rollback only subscriptions table
-#
+#   
 # ============================================================
 
 # ============================================================
@@ -66,12 +67,19 @@ build: ## Build the Go binary
 # RUN (LOCAL)
 # ============================================================
 
+.PHONY: docker-up-redis
+docker-up-redis: ## Start Redis only
+	docker-compose up -d redis
+
 .PHONY: run
-run: ## Start the server locally (DB via Docker)
-	@echo "[RUN] Checking Docker..."
-	make docker-up-db
+run: docker-up-db docker-up-redis ## Start the server locally (DB + Redis via Docker)
 	@echo "[RUN] Starting server locally..."
 	go run cmd/api/main.go
+.PHONY: stop
+stop: ## Остановить локальный сервер
+	@echo "  Останавливаю локальный сервер..."
+	-pkill -f "go run cmd/api/main.go" || true
+	@echo "  Сервер остановлен"
 
 # ============================================================
 # DOCKER

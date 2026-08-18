@@ -1,13 +1,20 @@
 package middleware
 
 import (
-    "net/http"
-    "os"
+	"Rest-user-agregator/internal/authentication"
+	"Rest-user-agregator/pkg/logger"
+	"net/http"
+	"os"
 )
 
 // CorsMiddleware — настраиваемый CORS
 func CorsMiddleware(next http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
+   logger.Debug("CorsMiddleware: ENTRY, user_id=%v, email=%v, role=%v",
+          r.Context().Value(authentication.UserIDKey),
+          r.Context().Value(authentication.EmailKey),
+          r.Context().Value(authentication.RoleKey),
+        )      
         port := os.Getenv("SERVER_PORT")
         if port == "" {
             port = "8087"
@@ -23,6 +30,12 @@ func CorsMiddleware(next http.HandlerFunc) http.HandlerFunc {
             w.WriteHeader(http.StatusOK)
             return
         }
+    logger.Debug("CorsMiddleware: before next, user_id=%v, email=%v, role=%v",
+    r.Context().Value(authentication.UserIDKey),
+    r.Context().Value(authentication.EmailKey),
+    r.Context().Value(authentication.RoleKey),
+)
+
         next(w, r)
     }
 }

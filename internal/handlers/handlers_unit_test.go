@@ -14,6 +14,7 @@ import (
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/repository"
 	"Rest-user-agregator/internal/service"
+    "Rest-user-agregator/internal/authentication"
 )
 
 // ============================================================
@@ -50,7 +51,8 @@ func TestCreate_Mock(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(tt.body)))
-           ctx := context.WithValue(req.Context(), "role", "admin")
+           ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+           ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
            req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 			handler.CreateSubscriptionHandler(w, req)
@@ -92,7 +94,7 @@ func TestGet_Mock(t *testing.T) {
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             req := httptest.NewRequest("GET", "/api/subscriptions/"+tt.id, nil)
-            ctx := context.WithValue(req.Context(), "role", "admin")
+            ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
             req = req.WithContext(ctx)
             req.SetPathValue("id", tt.id)
             w := httptest.NewRecorder()
@@ -127,7 +129,7 @@ func TestUpdate_Mock(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             req := httptest.NewRequest("PUT", "/api/subscriptions/"+tt.id, bytes.NewReader([]byte(tt.body)))
             req.SetPathValue("id", tt.id)
-            ctx := context.WithValue(req.Context(), "role", "admin")
+            ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
             req = req.WithContext(ctx)
             w := httptest.NewRecorder()
             handler.UpdateSubscriptionHandler(w, req)
@@ -160,7 +162,7 @@ func TestDelete_Mock(t *testing.T) {
         t.Run(tt.name, func(t *testing.T) {
             req := httptest.NewRequest("DELETE", "/api/subscriptions/"+tt.id, nil)
             req.SetPathValue("id", tt.id)
-            ctx := context.WithValue(req.Context(), "role", "admin")
+            ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
             req = req.WithContext(ctx)
             w := httptest.NewRecorder()
             handler.DeleteSubscriptionHandler(w, req)
@@ -184,7 +186,7 @@ func TestList_Mock(t *testing.T) {
     handler := NewHandler(svc, nil)
 
     req := httptest.NewRequest("GET", "/api/subscriptions?limit=10&offset=0", nil)
-    ctx := context.WithValue(req.Context(), "role", "admin")
+    ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
      req = req.WithContext(ctx)
     w := httptest.NewRecorder()
     handler.ListSubscriptionsHandler(w, req)
@@ -210,7 +212,7 @@ func TestTotalCost_Mock(t *testing.T) {
     handler := NewHandler(svc, nil)
 
     req := httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id=test&start_date=01-2025&end_date=12-2025", nil)
-    ctx := context.WithValue(req.Context(), "role", "admin")
+    ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
     req = req.WithContext(ctx)
     w := httptest.NewRecorder()
     handler.GetTotalCostHandler(w, req)

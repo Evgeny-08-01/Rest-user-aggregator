@@ -19,6 +19,7 @@ import (
 
 	_ "Rest-user-agregator/docs"
 	"Rest-user-agregator/internal/authentication"
+	"Rest-user-agregator/internal/cache"
 	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/internal/handlers"
 	"Rest-user-agregator/internal/middleware"
@@ -28,7 +29,7 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/swaggo/http-swagger"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // @title Subscription API
@@ -52,9 +53,10 @@ func main() {
 //	 func run() error {
 //	 1. .env
 //	 2. Логгер
-//	 3. БД
-//	 4. Миграции
-//	 5. Сервер
+//   3. Редис
+//	 4. БД
+//	 5. Миграции
+//	 6. Сервер
 //	   return nil
 //	}
 func run() error {
@@ -62,7 +64,13 @@ func run() error {
 	loadEnv()
 	// 2. Инициализация моего Логгера
 	initLogger()
-	// 3. Инициализация БД
+	   log.Println("DEBUG: after initLogger")
+    // 3. Redis
+    if err := initRedis(); err != nil {
+        logger.Warn("Redis unavailable, continuing without cache: %v", err)
+        // НЕ возвращаем ошибку — сервер работает без кеша
+    }
+	// 4. Инициализация БД
 	if err := initDB(); err != nil {
 		return fmt.Errorf("DB init: %w", err)
 	}
@@ -74,12 +82,12 @@ defer func() {
 }()
 	
 
-	// 4. Миграции
+	// 5. Миграции
 	if err := runMigrations(); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
 
-	// 5. Сервер
+	// 6. Сервер
 	if err := startServer(); err != nil {
 		return fmt.Errorf("server: %w", err)
 	}
@@ -103,8 +111,10 @@ func loadEnv() {
 
 // 4.2 Инициализация моего логгера(читаем уровень из .env)
 func initLogger() {
+	log.Println("DEBUG: initLogger start")
 	logLevel := os.Getenv("LOG_LEVEL") // читает переменную окружения LOG_LEVEL
 	logPath := os.Getenv("LOG_PATH")   // читает переменную окружения LOG_PATH
+//	loggerType := os.Getenv("LOGGER") 
 	if logLevel == "" {
 		logLevel = "info" //   default level
 	}
@@ -117,8 +127,9 @@ func initLogger() {
 			logPath = "./logs/app.log" // путь к файлу с логами для локальной разработки ,без Docker... go run main.go
 		}
 	}
-	logger.Init(logPath, logLevel)
-	logger.Info("Starting Subscription API server")
+    logger.Init(logPath, logLevel)
+    logger.Info("Starting Subscription API server")
+
 }
 
 // 4.3 Подключение к БД
@@ -185,6 +196,14 @@ func startServer() error {
 	// !!!! Таким образом handler содержит методы обработки запросов и подключение к БД
 
 	mux := http.NewServeMux() // Создаем роутер-switch для URL
+// ============================================================
+// ВРЕМЕННО ДЛЯ PPROF
+// ============================================================
+go func() {
+    logger.Info("pprof server listening on :6060")
+    http.ListenAndServe(":6060", nil)
+}()
+// ============================================================
     mux.Handle("/metrics", promhttp.Handler())
 	// ============================================================
 	// ФРОНТЕНД
@@ -325,35 +344,61 @@ mux.HandleFunc("GET /health", middleware.MetricsMiddleware(
 		WriteTimeout: 10 * time.Second, // максимальное время на запись ответа — защита от зависших хендлеров
 		IdleTimeout:  15 * time.Second, // максимальное время жизни keep-alive соединения без новых запросов
 	}
-	// Запускаем сервер в горутине
-	go func() {
-		logger.Info("Server starting on port %s", port)
-		if err2 := srv.ListenAndServe(); err2 != nil && err2 != http.ErrServerClosed { // Обработка ошибок сервера
-			logger.Error("Server failed: %v", err2)
-			os.Exit(1) // Завершаем программу по аварии с кодом 1
-		}
-	}()
+// ============================================================
+//  КАНАЛ ДЛЯ ОШИБОК ОТ СЕРВЕРА
+// ============================================================
+// Буфер 1 — чтобы ошибка не потерялась, если main ещё не читает
+    serverErrors := make(chan error, 1)
 
-	// ============================================================
-	// 8. GRACEFUL SHUTDOWN (ожидание сигнала на отключение)
-	// ============================================================
-	quit := make(chan os.Signal, 1)                      // Создаем канал для ожидания сигналов
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM) // Наблюдаем за сигналами SIGINT и SIGTERM
-	<-quit                                               // Блокируем до получения сигнала
+// ============================================================
+//  ЗАПУСК СЕРВЕРА В ГОРУТИНЕ
+// ============================================================
+    go func() {
+        logger.Info("Server starting on port %s", port)
 
-	logger.Info("Shutting down server...")
+        // ListenAndServe — БЛОКИРУЮЩИЙ вызов
+        // http.ErrServerClosed — НЕ ошибка, а нормальное завершение
+        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            logger.Error("Server failed: %v", err)
+            serverErrors <- err // ← отправляем ошибку в канал
+        }
+        // если err == nil или http.ErrServerClosed — горутина завершается без ошибки
+    }()		
+// ============================================================
+//  КАНАЛ ДЛЯ СИГНАЛОВ ОСТАНОВКИ
+// ============================================================
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 11*time.Second) // Контекст с таймаутом на завершение (11 секунд > WriteTimeout)
-	defer cancel()
+// ============================================================
+//  ОЖИДАНИЕ СИГНАЛА ИЛИ ОШИБКИ
+// ============================================================
+    select {
+    case <-quit:
+        logger.Info("Shutting down server...") // Ctrl+C или Docker stop
+    case err := <-serverErrors:
+        logger.Error("Server error: %v", err) // сервер упал
+        // НЕ ВЫХОДИМ! продолжаем graceful shutdown
+    }
+// ============================================================
+//  GRACEFUL SHUTDOWN
+// ============================================================
+    ctx, cancel := context.WithTimeout(context.Background(), 11*time.Second)
+    defer cancel()
 
-	// Останавливаем сервер по сигналу от контекста
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error("Server forced to shutdown: %v", err)
-		os.Exit(1)
-	}
+// ============================================================
+//  ОСТАНОВКА СЕРВЕРА
+// ============================================================
+    if err := srv.Shutdown(ctx); err != nil {
+        logger.Error("Server forced to shutdown: %v", err)
+        return err // ← ВОЗВРАЩАЕМ ОШИБКУ в run(), НЕ os.Exit(1)!
+    }
 
-	logger.Info("Server exited properly")
-	return nil
+// ============================================================
+//  УСПЕШНОЕ ЗАВЕРШЕНИЕ
+// ============================================================
+    logger.Info("Server exited properly")
+    return nil // ← nil — всё хорошо
 }
 
 
@@ -372,4 +417,92 @@ func applyMigrations() error {
 		logger.Warn("Migrations warning (maybe already applied): %v", err)
 	}
 	return nil
+}
+// ============================================================
+// initRedis — инициализация подключения к Redis (кеш)
+// ============================================================
+// Назначение: создаёт подключение к Redis для кеширования результатов.
+// Redis используется для хранения результатов тяжёлых запросов
+// (например, total-cost), чтобы не нагружать БД.
+//
+// ПОЧЕМУ REDIS НЕ КРИТИЧЕН:
+//   - Если Redis недоступен — сервер продолжает работать
+//   - Кеш — это оптимизация, а не обязательная часть
+//   - Без кеша запросы будут медленнее, но корректными
+//
+// КОГДА ВЫЗЫВАЕТСЯ:
+//   - При старте сервера (в функции run())
+//   - После инициализации БД, до запуска HTTP-сервера
+//
+// ВОЗВРАЩАЕТ:
+//   - error: ошибка, если не удалось подключиться
+// ============================================================
+func initRedis() error {
+    // ============================================================
+    // 1. ЧИТАЕМ АДРЕС REDIS ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ
+    // ============================================================
+    // redisAddr — адрес Redis в формате "хост:порт"
+    // Примеры:
+    //   - "localhost:6379" — для локальной разработки (без Docker)
+    //   - "redis:6379"     — для запуска в Docker (сервис называется "redis")
+    //
+    // Переменная задаётся в .env файле:
+    //   REDIS_ADDR=redis:6379
+    // ============================================================
+    redisAddr := os.Getenv("REDIS_ADDR")
+
+    // Если переменная не задана — используем значение по умолчанию
+    // localhost:6379 — стандартный адрес для Redis при локальной установке
+    if redisAddr == "" {
+        redisAddr = "localhost:6379"
+        // Логируем предупреждение, что используем значение по умолчанию
+        // Это не ошибка, просто напоминание для разработчика
+        logger.Warn("REDIS_ADDR not set, using default: %s", redisAddr)
+    } else {
+        // Если переменная задана — логируем, что используем её
+        logger.Debug("REDIS_ADDR: %s", redisAddr)
+    }
+
+    // ============================================================
+    // 2. ПЫТАЕМСЯ ПОДКЛЮЧИТЬСЯ К REDIS
+    // ============================================================
+    // Вызываем функцию InitRedis из пакета cache.
+    // Параметры:
+    //   - redisAddr: адрес Redis (хост:порт)
+    //   - ""        : пароль (у нас нет пароля, оставляем пустым)
+    //   - 0         : номер базы данных (по умолчанию 0)
+    //
+    // InitRedis внутри себя:
+    //   1. Создаёт клиент Redis
+    //   2. Отправляет PING для проверки подключения
+    //   3. Если PING успешен — возвращает nil (успех)
+    //   4. Если нет — возвращает ошибку
+    // ============================================================
+    if err := cache.InitRedis(redisAddr, "", 0); err != nil {
+        // ============================================================
+        // 3. ОБРАБОТКА ОШИБКИ ПОДКЛЮЧЕНИЯ
+        // ============================================================
+        // Если Redis недоступен — мы НЕ останавливаем сервер.
+        // Почему:
+        //   - Кеш — это оптимизация, а не критическая часть
+        //   - Без кеша сервер всё ещё работает (но медленнее)
+        //   - Пользователь не должен видеть ошибку из-за того, что Redis упал
+        //
+        // Что делаем:
+        //   - Логируем предупреждение, что работаем без кеша
+        //   - Возвращаем ошибку в run(), но там она обрабатывается как WARN
+        // ============================================================
+
+        logger.Warn("Redis unavailable, continuing without cache")
+        return err
+    }
+
+    // ============================================================
+    // 4. УСПЕШНОЕ ПОДКЛЮЧЕНИЕ
+    // ============================================================
+    // Если подключение успешно — логируем успех.
+    // После этой строки кеш готов к использованию.
+    // ============================================================
+    logger.Info("Redis initialized successfully on %s", redisAddr)
+    return nil
 }

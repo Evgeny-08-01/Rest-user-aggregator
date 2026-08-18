@@ -24,7 +24,8 @@
 .env
 .env.local
 .env.*.local
-
+.env.test
+.env.test.local
 # Logs
 *.log
 logs/
@@ -40,3 +41,18 @@ load-tests/
 target/
 load-test.sh
 *.bin
+# Копии файлов
+*.copy
+*копия*
+*копия.go
+# Профилирование
+*.prof
+
+# Нагрузочные тесты
+*.bin
+loadtest.sh
+load_result.txt
+insert_data.sql
+login.json
+1.goo
+gen_hash.go

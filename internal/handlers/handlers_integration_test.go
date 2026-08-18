@@ -1,4 +1,4 @@
-//go:build integration
+//g o:build integration
 
 package handlers
 
@@ -7,15 +7,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
+	"Rest-user-agregator/internal/authentication" //для аутентификации пользователей       // для работы с Redis
+	"Rest-user-agregator/internal/cache"
 	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/service"
+	"Rest-user-agregator/pkg/logger"
+
+	"github.com/golang-jwt/jwt/v5" // для генерации JWT
 	"github.com/joho/godotenv"
 )
 
@@ -38,7 +45,9 @@ func TestMain(m *testing.M) {
 	//    Файл .env.test лежит в корне проекта (на два уровня выше)
 	//    Если файл не найден — тесты пропускаются (но не падают)
 	godotenv.Load("../../.env.test")
-
+	log.Println("LOG_LEVEL from env.test:", os.Getenv("LOG_LEVEL"))
+	logger.Init(os.Getenv("LOG_PATH"), os.Getenv("LOG_LEVEL"))
+	
 	// 2. ПОЛУЧАЕМ СТРОКУ ПОДКЛЮЧЕНИЯ К БД
 	//    Берём из переменной окружения DB_PATH
 	dbPath := os.Getenv("DB_PATH")
@@ -54,7 +63,14 @@ func TestMain(m *testing.M) {
 		// Используем panic, чтобы остановить выполнение
 		panic("Failed to init DB: " + err.Error())
 	}
-
+// Инициализация Redis
+redisAddr := os.Getenv("REDIS_ADDR")
+if redisAddr == "" {
+    redisAddr = "localhost:6379"
+}
+if err := cache.InitRedis(redisAddr, "", 0); err != nil {
+    log.Println("WARNING: Redis not available, cache disabled")
+}
 	// 4. ЗАКРЫВАЕМ СОЕДИНЕНИЕ ПОСЛЕ ТЕСТОВ
 	//    defer означает: "выполни эту функцию в конце работы TestMain"
 	//    Это гарантирует, что БД закроется даже если тесты упадут
@@ -72,7 +88,6 @@ func TestMain(m *testing.M) {
 	if err := database.CleanTestTable(); err != nil {
 		panic("Failed to clean table: " + err.Error())
 	}
-
 	// 7. ЗАПУСКАЕМ ВСЕ ТЕСТЫ
 	//    m.Run() запускает все тесты в этом пакете
 	//    os.Exit() передаёт код выхода (0 = успех, 1 = ошибка)
@@ -118,9 +133,11 @@ func setupTestHandler() *Handler {
 //   Если бы мы использовали роль user — некоторые операции были бы запрещены.
 // ============================================================
 func addAdminContext(req *http.Request) *http.Request {
-	ctx := context.WithValue(req.Context(), "role", "admin")
+	ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+	ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
 	return req.WithContext(ctx)
 }
+
 
 // ============================================================
 // 1. ТЕСТ: СОЗДАНИЕ ПОДПИСКИ (POST /api/subscriptions)
@@ -202,6 +219,9 @@ func TestCreateSubscriptionHandler(t *testing.T) {
 			// Создаём recorder для ответа
 			w := httptest.NewRecorder()
 			// Вызываем хендлер
+			ctx := context.WithValue(req.Context(), authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
+            ctx = context.WithValue(ctx, authentication.RoleKey, "admin")
+            req = req.WithContext(ctx)
 			handler.CreateSubscriptionHandler(w, req)
 			// Проверяем статус
 			if w.Code != tt.wantStatus {
@@ -265,6 +285,9 @@ func TestGetSubscriptionHandler(t *testing.T) {
 		req = addAdminContext(req)
 		req.SetPathValue("id", "99999") // такого ID нет в БД
 		w := httptest.NewRecorder()
+		ctx := context.WithValue(req.Context(), authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
+        ctx = context.WithValue(ctx, authentication.RoleKey, "admin")
+        req = req.WithContext(ctx)     
 		handler.GetSubscriptionHandler(w, req)
 
 		// Ожидаем 404 Not Found
@@ -313,6 +336,9 @@ func TestUpdateSubscriptionHandler(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
 	req = addAdminContext(req)
 	w := httptest.NewRecorder()
+	ctx := context.WithValue(req.Context(), authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "admin")
+    req = req.WithContext(ctx) 
 	handler.CreateSubscriptionHandler(w, req)
 
 	// 2. ИЗВЛЕКАЕМ ID
@@ -328,6 +354,9 @@ func TestUpdateSubscriptionHandler(t *testing.T) {
 		req = addAdminContext(req)
 		req.SetPathValue("id", strconv.Itoa(id))
 		w := httptest.NewRecorder()
+		ctx := context.WithValue(req.Context(), authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
+        ctx = context.WithValue(ctx, authentication.RoleKey, "admin")
+        req = req.WithContext(ctx)         
 		handler.UpdateSubscriptionHandler(w, req)
 
 		if w.Code != http.StatusOK {
@@ -636,4 +665,487 @@ func TestGetTotalCostHandler(t *testing.T) {
 			}
 		})
 	}
+}
+// ============================================================
+// ИНТЕГРАЦИОННЫЕ ТЕСТЫ КЕШИРОВАНИЯ
+// ============================================================
+//
+// Эти тесты проверяют реальную работу с Redis через API.
+// Требуют запущенного Redis и чистой БД.
+// ============================================================
+// ============================================================
+// createTestUser — создаёт тестового пользователя в БД и возвращает JWT-токен.
+// ============================================================
+// Зачем:
+//   - Для интеграционных тестов нужен реальный пользователь с валидным токеном.
+//   - Без этого хендлеры возвращают 401 Unauthorized.
+//
+// Как работает:
+//   1. Проверяем, есть ли пользователь в БД.
+//   2. Если нет — создаём.
+//   3. Генерируем JWT-токен с ролью "user".
+//   4. Возвращаем токен.
+//
+// Параметры:
+//   - t: указатель на тест (для логирования и Fail)
+//   - userID: UUID пользователя (фиксированный для тестов)
+//
+// Возвращает:
+//   - string: JWT-токен
+// ============================================================
+func createTestUser(t *testing.T, userID string) string {
+    // 1. ПОДКЛЮЧАЕМСЯ К БД (используем глобальный db из пакета database)
+    db := database.GetDB()
+    if db == nil {
+        t.Fatal("Database not initialized")
+    }
+
+    // 2. ПРОВЕРЯЕМ, ЕСТЬ ЛИ ПОЛЬЗОВАТЕЛЬ
+    var count int
+    err := db.QueryRow("SELECT COUNT(*) FROM users WHERE id = $1", userID).Scan(&count)
+    if err != nil {
+        t.Fatalf("Failed to check user existence: %v", err)
+    }
+
+    // 3. ЕСЛИ ПОЛЬЗОВАТЕЛЯ НЕТ — СОЗДАЁМ
+    if count == 0 {
+        // Хеш пароля для "password123" (bcrypt)
+        // Сгенерирован заранее, чтобы не вычислять в тесте
+        hashedPassword := "$2a$10$8dXxWmxnKk59pdXdy44l/eb4g1PnaFenHN3B.4lLR4bRy4ZL4xjK."
+        _, err = db.Exec(
+            "INSERT INTO users (id, email, password_hash, role, created_at) VALUES ($1, $2, $3, $4, NOW())",
+            userID,
+            "test_"+userID+"@example.com",
+            hashedPassword,
+            "user",
+        )
+        if err != nil {
+            t.Fatalf("Failed to create test user: %v", err)
+        }
+        t.Logf("Test user created: %s", userID)
+    } else {
+        t.Logf("Test user already exists: %s", userID)
+    }
+
+    // 4. ГЕНЕРИРУЕМ JWT-ТОКЕН
+    //    Используем тот же секрет, что и в .env (JWT_SECRET)
+    secret := os.Getenv("JWT_SECRET")
+    if secret == "" {
+        secret = "test-secret-key" // fallback для тестов
+    }
+
+    // Создаём claims (данные токена)
+    claims := authentication.Claims{
+        UserID: userID,
+        Email:  "test_" + userID + "@example.com",
+        Role:   "admin",
+        RegisteredClaims: jwt.RegisteredClaims{
+            ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+            IssuedAt:  jwt.NewNumericDate(time.Now()),
+        },
+    }
+
+    // Создаём токен
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+    tokenString, err := token.SignedString([]byte(secret))
+    if err != nil {
+        t.Fatalf("Failed to generate JWT token: %v", err)
+    }
+
+    t.Logf("JWT token generated for user: %s", userID)
+    return tokenString
+}
+// ============================================================
+// TestCacheInvalidationAfterCreate
+// ============================================================
+// Проверяет инвалидацию кеша после создания подписки.
+// Сценарий:
+//   1. Делаем GET total-cost (создаётся кеш с v1).
+//   2. Запоминаем результат.
+//   3. Создаём подписку (POST) → версия инкрементится до 2.
+//   4. Делаем GET total-cost снова.
+//   5. Проверяем, что результат ИЗМЕНИЛСЯ (данные обновились).
+//   6. Проверяем, что в Redis есть ключ с v2, а старый v1 игнорируется.
+// ============================================================
+func TestCacheInvalidationAfterCreate(t *testing.T) {
+    // 1. ОЧИЩАЕМ ТАБЛИЦЫ ПЕРЕД ТЕСТОМ
+    if err := database.CleanTestTable(); err != nil {
+        t.Fatalf("CleanTestTable failed: %v", err)
+    }
+    t.Log("Table cleaned successfully")
+
+    handler := setupTestHandler()
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+
+    // 2. СОЗДАЁМ ПОЛЬЗОВАТЕЛЯ И ПОЛУЧАЕМ ТОКЕН
+    token := createTestUser(t, userID)
+    t.Logf("Token generated")
+
+    // 3. ДЕЛАЕМ GET total-cost (создаём кеш v1)
+    t.Log("Step 1: GET total-cost (create cache v1),userID:%w",userID)
+    req := httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id="+userID+"&start_date=01-2025&end_date=12-2025", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w := httptest.NewRecorder()
+    handler.GetTotalCostHandler(w, req)
+    if w.Code != http.StatusOK {
+        t.Fatalf("GET total-cost failed: %d", w.Code)
+    }
+
+    // 4. ЗАПОМИНАЕМ ПЕРВЫЙ РЕЗУЛЬТАТ
+    var resp1 map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&resp1); err != nil {
+        t.Fatalf("Failed to decode first response: %v", err)
+    }
+    firstTotal := resp1["total"]
+    t.Logf("First total: %d", firstTotal)
+
+    // 5. ПРОВЕРЯЕМ REDIS — ДОЛЖЕН БЫТЬ КЛЮЧ С v1
+    t.Log("Step 2: Checking Redis for v1 keys")
+    keys1, err := getRedisKeys("total:v1:*")
+    if err != nil {
+        t.Logf("Redis check warning: %v", err)
+    }
+    if len(keys1) == 0 {
+        t.Error("Expected at least one Redis key with v1, got none,keys1%w:",keys1)
+    } else {
+        t.Logf("Found Redis keys with v1: %d", len(keys1))
+        for _, key := range keys1 {
+            t.Logf("  - %s", key)
+        }
+    }
+
+    // 6. СОЗДАЁМ ПОДПИСКУ (POST)
+    t.Log("Step 3: Create subscription (POST)")
+    createBody := `{"service_name":"TestCache","price":100,"user_id":"` + userID + `","start_date":"01-2025","end_date":"12-2025"}`
+    req = httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w = httptest.NewRecorder()
+    handler.CreateSubscriptionHandler(w, req)
+
+    if w.Code != http.StatusCreated {
+        t.Fatalf("Create subscription failed: %d", w.Code)
+    }
+    t.Log("Subscription created successfully")
+
+    // 7. ДЕЛАЕМ GET total-cost СНОВА
+    t.Log("Step 4: GET total-cost again")
+    req = httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id="+userID+"&start_date=01-2025&end_date=12-2025", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w = httptest.NewRecorder()
+    handler.GetTotalCostHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("GET total-cost after create failed: %d", w.Code)
+    }
+
+    // 8. ЗАПОМИНАЕМ ВТОРОЙ РЕЗУЛЬТАТ
+    var resp2 map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&resp2); err != nil {
+        t.Fatalf("Failed to decode second response: %v", err)
+    }
+    secondTotal := resp2["total"]
+    t.Logf("Second total: %d", secondTotal)
+
+    // 9. ПРОВЕРЯЕМ, ЧТО РЕЗУЛЬТАТ ИЗМЕНИЛСЯ
+    if secondTotal <= firstTotal {
+        t.Errorf("Expected total to increase after creating subscription, got %d <= %d", secondTotal, firstTotal)
+    } else {
+        t.Logf("Total increased correctly: %d -> %d", firstTotal, secondTotal)
+    }
+
+    // 10. ПРОВЕРЯЕМ REDIS — ДОЛЖЕН БЫТЬ КЛЮЧ С v2
+    t.Log("Step 5: Checking Redis for v2 keys")
+    keys2, err := getRedisKeys("total:v2:*")
+    if err != nil {
+        t.Logf("Redis check warning: %v", err)
+    }
+    if len(keys2) == 0 {
+        t.Error("Expected at least one Redis key with v2, got none")
+    } else {
+        t.Logf("Found Redis keys with v2: %d", len(keys2))
+        for _, key := range keys2 {
+            t.Logf("  - %s", key)
+        }
+    }
+
+    // 11. ПРОВЕРЯЕМ, ЧТО КЕШ ОБНОВИЛСЯ
+    if len(keys1) > 0 && len(keys2) > 0 {
+        t.Log("Both v1 and v2 keys exist — v1 is ignored because version changed")
+    } else {
+        t.Log("Expected both v1 and v2 keys to exist")
+    }
+}
+
+
+
+
+// getRedisKeys — возвращает все ключи Redis по паттерну.
+func getRedisKeys(pattern string) ([]string, error) {
+    client := cache.GetClient()
+    if client == nil {
+        return []string{}, nil
+    }
+    return client.Keys(context.Background(), pattern).Result()
+}
+
+// addTestContext — добавляет user_id и role в контекст запроса.
+func addTestContext(req *http.Request, userID, role string) *http.Request {
+    ctx := req.Context()
+    ctx = context.WithValue(ctx, authentication.UserIDKey, userID)
+    ctx = context.WithValue(ctx, authentication.RoleKey, role)
+    return req.WithContext(ctx)
+}
+// ============================================================
+// TestCacheInvalidationAfterUpdate
+// ============================================================
+// Проверяет инвалидацию кеша после обновления подписки.
+// Сценарий:
+//   1. Создаём подписку (POST).
+//   2. Делаем GET total-cost (создаётся кеш с v1) — запоминаем результат.
+//   3. Обновляем подписку (PUT).
+//   4. Делаем GET total-cost снова — результат должен измениться.
+//   5. Проверяем, что в Redis есть ключ с v2.
+// ============================================================
+func TestCacheInvalidationAfterUpdate(t *testing.T) {
+    // 1. ОЧИЩАЕМ ТАБЛИЦЫ ПЕРЕД ТЕСТОМ
+    if err := database.CleanTestTable(); err != nil {
+        t.Fatalf("CleanTestTable failed: %v", err)
+    }
+    t.Log("Table cleaned successfully")
+
+    handler := setupTestHandler()
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    token := createTestUser(t, userID)
+
+    // 2. СОЗДАЁМ ПОДПИСКУ (POST)
+    t.Log("Step 1: Create subscription (POST)")
+    createBody := `{"service_name":"BeforeUpdate","price":100,"user_id":"` + userID + `","start_date":"01-2025","end_date":"12-2025"}`
+    req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w := httptest.NewRecorder()
+    handler.CreateSubscriptionHandler(w, req)
+
+    if w.Code != http.StatusCreated {
+        t.Fatalf("Create subscription failed: %d", w.Code)
+    }
+    t.Log("Subscription created successfully")
+
+    // 3. ПОЛУЧАЕМ ID
+    var createResp map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&createResp); err != nil {
+        t.Fatalf("Failed to decode create response: %v", err)
+    }
+    subID := createResp["id"]
+    t.Logf("Subscription ID: %d", subID)
+
+    // 4. ДЕЛАЕМ GET total-cost (создаём кеш v1) — ЗАПОМИНАЕМ РЕЗУЛЬТАТ
+    t.Log("Step 2: GET total-cost (create cache v1)")
+    req = httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id="+userID+"&start_date=01-2025&end_date=12-2025", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w = httptest.NewRecorder()
+    handler.GetTotalCostHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("GET total-cost before update failed: %d", w.Code)
+    }
+
+    var resp1 map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&resp1); err != nil {
+        t.Fatalf("Failed to decode first response: %v", err)
+    }
+    firstTotal := resp1["total"]
+    t.Logf("First total: %d", firstTotal)
+
+    // 5. ПРОВЕРЯЕМ v1
+    t.Log("Step 3: Checking Redis for v1 keys")
+    keysV1, err := getRedisKeys("total:v1:*")
+    if err != nil {
+        t.Logf("Redis check warning: %v", err)
+    }
+    if len(keysV1) == 0 {
+        t.Error("Expected at least one Redis key with v1, got none")
+    }
+
+    // 6. ОБНОВЛЯЕМ ПОДПИСКУ (PUT) — МЕНЯЕМ ЦЕНУ, ЧТОБЫ ИЗМЕНИЛСЯ TOTAL
+    t.Log("Step 4: Update subscription (PUT) — change price from 100 to 300")
+    updateBody := `{"service_name":"AfterUpdate","price":300,"user_id":"` + userID + `","start_date":"01-2025","end_date":"12-2025"}`
+    req = httptest.NewRequest("PUT", "/api/subscriptions/{id}", bytes.NewReader([]byte(updateBody)))
+	req.SetPathValue("id", strconv.Itoa(subID))
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "admin")
+    w = httptest.NewRecorder()
+    handler.UpdateSubscriptionHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("Update subscription failed: %d", w.Code)
+    }
+    t.Log("Subscription updated successfully")
+
+    // 7. ДЕЛАЕМ GET total-cost СНОВА
+    t.Log("Step 5: GET total-cost after update")
+    req = httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id="+userID+"&start_date=01-2025&end_date=12-2025", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w = httptest.NewRecorder()
+    handler.GetTotalCostHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("GET total-cost after update failed: %d", w.Code)
+    }
+
+    var resp2 map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&resp2); err != nil {
+        t.Fatalf("Failed to decode second response: %v", err)
+    }
+    secondTotal := resp2["total"]
+    t.Logf("Second total: %d", secondTotal)
+
+    // 8. ПРОВЕРЯЕМ, ЧТО РЕЗУЛЬТАТ ИЗМЕНИЛСЯ
+    if secondTotal == firstTotal {
+        t.Errorf("Expected total to change after update, got same: %d", firstTotal)
+    } else {
+        t.Logf("Total changed correctly: %d -> %d", firstTotal, secondTotal)
+    }
+
+    // 9. ПРОВЕРЯЕМ v2
+    t.Log("Step 6: Checking Redis for v2 keys")
+    keysV2, err := getRedisKeys("total:v2:*")
+    if err != nil {
+        t.Logf("Redis check warning: %v", err)
+    }
+    if len(keysV2) == 0 {
+        t.Error("Expected at least one Redis key with v2, got none")
+    }
+
+    t.Log("Both v1 and v2 keys exist — v1 is ignored because version changed")
+}
+// ============================================================
+// TestCacheInvalidationAfterDelete
+// ============================================================
+// Проверяет инвалидацию кеша после удаления подписки.
+// Сценарий:
+//   1. Создаём подписку (POST).
+//   2. Делаем GET total-cost (создаётся кеш с v1) — запоминаем результат.
+//   3. Удаляем подписку (DELETE).
+//   4. Делаем GET total-cost снова — результат должен уменьшиться.
+//   5. Проверяем, что в Redis есть ключ с v2.
+// ============================================================
+func TestCacheInvalidationAfterDelete(t *testing.T) {
+    // 1. ОЧИЩАЕМ ТАБЛИЦЫ ПЕРЕД ТЕСТОМ
+    if err := database.CleanTestTable(); err != nil {
+        t.Fatalf("CleanTestTable failed: %v", err)
+    }
+    t.Log("Table cleaned successfully")
+
+    handler := setupTestHandler()
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    token := createTestUser(t, userID)
+
+    // 2. СОЗДАЁМ ПОДПИСКУ (POST)
+    t.Log("Step 1: Create subscription (POST)")
+    createBody := `{"service_name":"ToDelete","price":100,"user_id":"` + userID + `","start_date":"01-2025","end_date":"12-2025"}`
+    req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w := httptest.NewRecorder()
+    handler.CreateSubscriptionHandler(w, req)
+
+    if w.Code != http.StatusCreated {
+        t.Fatalf("Create subscription failed: %d", w.Code)
+    }
+    t.Log("Subscription created successfully")
+
+    // 3. ПОЛУЧАЕМ ID
+    var createResp map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&createResp); err != nil {
+        t.Fatalf("Failed to decode create response: %v", err)
+    }
+    subID := createResp["id"]
+    t.Logf("Subscription ID: %d", subID)
+
+    // 4. ДЕЛАЕМ GET total-cost (создаём кеш v1) — ЗАПОМИНАЕМ РЕЗУЛЬТАТ
+    t.Log("Step 2: GET total-cost (create cache v1)")
+    req = httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id="+userID+"&start_date=01-2025&end_date=12-2025", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w = httptest.NewRecorder()
+    handler.GetTotalCostHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("GET total-cost before delete failed: %d", w.Code)
+    }
+
+    var resp1 map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&resp1); err != nil {
+        t.Fatalf("Failed to decode first response: %v", err)
+    }
+    firstTotal := resp1["total"]
+    t.Logf("First total: %d", firstTotal)
+
+    // 5. ПРОВЕРЯЕМ v1
+    t.Log("Step 3: Checking Redis for v1 keys")
+    keysV1, err := getRedisKeys("total:v1:*")
+    if err != nil {
+        t.Logf("Redis check warning: %v", err)
+    }
+    if len(keysV1) == 0 {
+        t.Error("Expected at least one Redis key with v1, got none")
+    }
+
+    // 6. УДАЛЯЕМ ПОДПИСКУ (DELETE)
+    t.Log("Step 4: Delete subscription (DELETE)")
+    req = httptest.NewRequest("DELETE", "/api/subscriptions/{id}", nil)
+	req.SetPathValue("id", strconv.Itoa(subID))
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "admin")
+    w = httptest.NewRecorder()
+    handler.DeleteSubscriptionHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("Delete subscription failed: %d", w.Code)
+    }
+    t.Log("Subscription deleted successfully")
+
+    // 7. ДЕЛАЕМ GET total-cost СНОВА
+    t.Log("Step 5: GET total-cost after delete")
+    req = httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id="+userID+"&start_date=01-2025&end_date=12-2025", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID, "user")
+    w = httptest.NewRecorder()
+    handler.GetTotalCostHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("GET total-cost after delete failed: %d", w.Code)
+    }
+
+    var resp2 map[string]int
+    if err := json.NewDecoder(w.Body).Decode(&resp2); err != nil {
+        t.Fatalf("Failed to decode second response: %v", err)
+    }
+    secondTotal := resp2["total"]
+    t.Logf("Second total: %d", secondTotal)
+
+    // 8. ПРОВЕРЯЕМ, ЧТО РЕЗУЛЬТАТ ИЗМЕНИЛСЯ (УМЕНЬШИЛСЯ)
+    if secondTotal >= firstTotal {
+        t.Errorf("Expected total to decrease after deletion, got %d >= %d", secondTotal, firstTotal)
+    } else {
+        t.Logf("Total decreased correctly: %d -> %d", firstTotal, secondTotal)
+    }
+
+    // 9. ПРОВЕРЯЕМ v2
+    t.Log("Step 6: Checking Redis for v2 keys")
+    keysV2, err := getRedisKeys("total:v2:*")
+    if err != nil {
+        t.Logf("Redis check warning: %v", err)
+    }
+    if len(keysV2) == 0 {
+        t.Error("Expected at least one Redis key with v2, got none")
+    }
+
+    t.Log("Both v1 and v2 keys exist — v1 is ignored because version changed")
 }

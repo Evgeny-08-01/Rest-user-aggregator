@@ -2,35 +2,91 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"time"
 
+	"Rest-user-agregator/internal/cache"
 	"Rest-user-agregator/internal/repository"
 	"Rest-user-agregator/pkg/logger"
+
 	_ "github.com/lib/pq"
 )
 
 // db -пакетная переменная (уровня пакета) с соединением с БД. Доступна только внутри пакета database (приватная).
 var db *sql.DB
 
-// Init открывает соединение с БД и проверяет его работоспособность
+/// Init открывает соединение с БД и настраивает пул соединений
 func Init(databasePath string) error {
+	// 1. ОТКРЫВАЕМ СОЕДИНЕНИЕ (структуру)
+	//    sql.Open НЕ создаёт физическое соединение, только структуру *sql.DB.
+	//    Физическое соединение откроется при первом запросе (Ping или Query).
 	var err error
 	db, err = sql.Open("postgres", databasePath)
 	if err != nil {
+		// Ошибка может быть только при невалидном DSN (строка подключения)
 		logger.Error("Failed to open database connection: %v", err)
 		return err
 	}
-	//  Проверяем подключение
+
+	// ============================================================
+	// 2. НАСТРОЙКА ПУЛА СОЕДИНЕНИЙ (КРИТИЧЕСКИ ВАЖНО)
+	// ============================================================
+	// Без этих настроек Go использует значения по умолчанию:
+	//   - MaxOpenConns = 0 (не ограничено) → может создать тысячи соединений
+	//   - MaxIdleConns = 2 (держит только 2) → остальные закрываются сразу
+	//
+	// При 200 RPS это приводит к:
+	//   - 200 открытий/закрытий в секунду → нагрузка на CPU
+	//   - Исчерпание файловых дескрипторов → ошибки "too many open files"
+	//   - Падение сервера при нагрузке
+	// ============================================================
+
+	// SetMaxOpenConns — максимальное количество ОДНОВРЕМЕННЫХ соединений.
+	// 50 означает: одновременно может быть не больше 50 активных запросов к БД.
+	// Остальные запросы будут ждать в очереди, пока освободится соединение.
+	// Почему 50: при 200 RPS и времени запроса 10 мс нужно ~2 соединения,
+	// но с запасом для пиковых нагрузок берём 50.
+	db.SetMaxOpenConns(50)
+
+	// SetMaxIdleConns — количество "спящих" соединений в пуле.
+	// 25 означает: даже если запросов нет, держим 25 открытых соединений.
+	// Это экономит время на открытие новых соединений при следующем запросе.
+	// Почему 25: половина от MaxOpenConns — баланс между скоростью и памятью.
+	db.SetMaxIdleConns(25)
+
+	// SetConnMaxLifetime — максимальное ВРЕМЯ ЖИЗНИ соединения.
+	// 5 минут: через 5 минут соединение закрывается (даже если используется).
+	// Зачем: PostgreSQL перезагружается, обновляет настройки, закрывает старые соединения.
+	// Если Go будет держать соединение дольше 5 минут — БД его принудительно закроет,
+	// а Go получит ошибку "bad connection".
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	// SetConnMaxIdleTime — максимальное время ПРОСТОЯ соединения.
+	// 3 минуты: если соединение не использовалось 3 минуты — оно закрывается.
+	// Зачем: освобождать ресурсы, когда нагрузка упала (ночью, выходные).
+	// Если не закрывать — память БД будет занята даже в простое.
+	db.SetConnMaxIdleTime(3 * time.Minute)
+
+	// Логируем настройки, чтобы в логах было видно, что пул настроен
+	logger.Info("Database connection pool configured: MaxOpen=50, MaxIdle=25, MaxLifetime=5m, MaxIdleTime=3m")
+
+	// ============================================================
+	// 3. ПРОВЕРЯЕМ, ЧТО БД ДОСТУПНА
+	// ============================================================
+	// Ping открывает ФИЗИЧЕСКОЕ соединение и отправляет тестовый запрос.
+	// Если БД не запущена — вернёт ошибку (и сервер упадёт при старте).
 	err = db.Ping()
 	if err != nil {
-			logger.Error("Failed to ping database: %v", err)
+		logger.Error("Failed to ping database: %v", err)
 		return err
 	}
+
+	// Всё хорошо, БД доступна
 	logger.Info("Database connected successfully")
 	return nil
 }
-
 // Close закрывает соединение с базой данных
 func Close() error {
     if db == nil {
@@ -95,17 +151,36 @@ func CreateTestTable() error {
 }
 
 // CleanTestTable очищает таблицу перед тестами
+// CleanTestTable очищает таблицу перед тестами
 func CleanTestTable() error {
     if db == nil {
         err := errors.New("database not initialized")
         logger.Error("CleanTestTable: %v", err)
         return err
     }
-    _, err := db.Exec("TRUNCATE subscriptions, users RESTART IDENTITY")
+    _, err := db.Exec("TRUNCATE subscriptions, users, cache_control_user RESTART IDENTITY")
     if err != nil {
         logger.Error("CleanTestTable: failed to truncate tables: %v", err)
         return err
     }
+
+    // Очищаем Redis: удаляем все ключи с префиксом total:
+    client := cache.GetClient()
+    if client != nil {
+        ctx := context.Background()
+        iter := client.Scan(ctx, 0, "total:*", 0).Iterator()
+        for iter.Next(ctx) {
+            if err := client.Del(ctx, iter.Val()).Err(); err != nil {
+                logger.Warn("CleanTestTable: failed to delete key %s: %v", iter.Val(), err)
+            }
+        }
+        if err := iter.Err(); err != nil {
+            logger.Warn("CleanTestTable: Redis scan error: %v", err)
+        } else {
+            logger.Debug("CleanTestTable: Redis keys with prefix total:* deleted")
+        }
+    }
+
     logger.Debug("CleanTestTable: tables truncated successfully")
     return nil
 }

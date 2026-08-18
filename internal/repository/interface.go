@@ -10,12 +10,22 @@ import (
 
 // SubscriptionRepository - список всех методов для работы с БД
 type SubscriptionRepository interface {
+//  Методы для подписок(таблица subscriptions) 
     CreateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
     GetSubscriptionByID(ctx context.Context, id int) (*models.Subscription, error)
     UpdateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
     DeleteSubscription(ctx context.Context, id int) error
     ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error)
     GetTotalCost(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) 
+// ============================================================
+    // МЕТОДЫ ДЛЯ РАБОТЫ С КЕШЕМ (таблица cache_control_user)
+    // ============================================================
+    // GetCacheUserVersion — возвращает текущую версию кеша пользователя.
+    // Если записи нет — создаёт со значением 1.
+    // IncrementCacheUserVersion — увеличивает версию кеша пользователя на 1.
+    // Вызывается при Create/Update/Delete подписки.
+    GetCacheUserVersion(ctx context.Context, userID string) (int, error)
+    IncrementCacheUserVersion(ctx context.Context, userID string) error
 }
 // ============================================================
 // UserRepository - интерфейс для работы с пользователями

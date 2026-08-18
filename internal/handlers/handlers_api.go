@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"Rest-user-agregator/internal/authentication"
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/service"
 	"Rest-user-agregator/pkg/logger"
@@ -48,13 +49,21 @@ func NewHandler(svc *service.SubscriptionService, authSvc *service.AuthService) 
 // @Router       /subscriptions [post]
 // 1. CreateSubscriptionHandler-Хэндлер записи одной строки
 func (h *Handler) CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-    role := r.Context().Value("role").(string)
-if role != "admin" {
-    writeJSONError(w, http.StatusForbidden, "admin only")
-    return
-}
-	ctx := r.Context()
-	var req models.Subscription
+   logger.Debug("получили в CreateSubscriptionHandler из преддыдущего вызова, user_id=%v, email=%v, role=%v",
+    r.Context().Value(authentication.UserIDKey),
+    r.Context().Value(authentication.EmailKey),
+    r.Context().Value(authentication.RoleKey),
+)
+// Проверяем авторизацию
+    userID, ok := r.Context().Value(authentication.UserIDKey).(string)
+    if !ok || userID == "" {
+        logger.Warn("CreateSubscriptionHandler: user_id not found or invalid")
+        writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+        return
+    }
+
+    ctx := r.Context()
+    var req models.Subscription
 	// 1. Распарсить JSON
 	err := parseJSON(r, &req)
 	if err != nil {
@@ -143,7 +152,7 @@ func (h *Handler) GetSubscriptionHandler(w http.ResponseWriter, r *http.Request)
 // @Router        /subscriptions/{id} [put]
 // 3. UpdateSubscriptionHandler-Хэндлер обновления одной строки
 func (h *Handler) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-   role := r.Context().Value("role").(string)
+   role := r.Context().Value(authentication.RoleKey).(string)
 if role != "admin" {
     writeJSONError(w, http.StatusForbidden, "admin only")
     return
@@ -208,7 +217,7 @@ if err != nil {
 //   3. Вызывает сервис для удаления подписки из БД
 //   4. Возвращает статус операции или ошибку с соответствующим HTTP-статусом
 func (h *Handler) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-   role := r.Context().Value("role").(string)
+   role := r.Context().Value(authentication.RoleKey).(string)
 if role != "admin" {
     writeJSONError(w, http.StatusForbidden, "admin only")
     return

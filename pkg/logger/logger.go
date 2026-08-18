@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
+	"strings"
 )
 
 // Level - уровень логирования
@@ -96,6 +98,16 @@ func internalLog(level Level, msg string, args ...any) {
 	if level < currentLevel {
 		return
 	}
+ _, file, line, ok := runtime.Caller(2)
+        if ok {
+            shortFile := file
+            if idx := strings.LastIndex(file, "/"); idx != -1 {
+                shortFile = file[idx+1:]
+            }
+            formattedMsg := fmt.Sprintf(msg, args...)
+            log.Printf("[%s] %s (%s:%d)", level.String(), formattedMsg, shortFile, line)
+            return
+        }	
 	formattedMsg := fmt.Sprintf(msg, args...)
 	log.Printf("[%s] %s", level.String(), formattedMsg)
 }

@@ -24,6 +24,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /subscription_app ./cmd/ap
 # СТАДИЯ 2: финальный образ (только для запуска)
 # -----------------------------------------------------------------------------
 FROM alpine:latest
+# синхронизация времени
+RUN apk add --no-cache tzdata
+ENV TZ=Europe/Moscow
 
 # Копируем бинарник
 COPY --from=base_image /subscription_app /subscription_app

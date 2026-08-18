@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"Rest-user-agregator/internal/cache"
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/repository"
 	"Rest-user-agregator/pkg/logger"
+
+	"github.com/redis/go-redis/v9"
 )
 type SubscriptionService struct {
     repo repository.SubscriptionRepository
@@ -21,39 +24,145 @@ func NewSubscriptionService(repo repository.SubscriptionRepository) *Subscriptio
 // GetTotalCost — рассчитывает суммарную стоимость подписок за указанный период.
 // Параметры:
 //   - ctx: контекст для управления временем жизни запроса
-//   - userID: идентификатор пользователя (опционально, фильтр)
+//   - userID: идентификатор пользователя (обязательный, извлекается из JWT)
 //   - serviceName: название сервиса (опционально, фильтр)
 //   - startDate: дата начала периода в формате MM-YYYY (обязательно)
 //   - endDate: дата окончания периода в формате MM-YYYY (опционально)
+//
+// Логика работы с кешем (Redis):
+//  1. Получаем текущую версию кеша пользователя из таблицы cache_control_user в БД.
+//     - Версия хранится в БД, чтобы обеспечить 100% консистентность.
+//     - Если версию получить не удалось (ошибка БД) — кеш отключается, идём в БД.
+//  2. Строим ключ для Redis с учётом версии и всех параметров запроса:
+//       total:v{version}:{userID}:{serviceName}:{startDate}:{endDate}
+//     - Пример: total:v3:123:yandex:01-2025:12-2025
+//     - Если serviceName пустой — подставляется пустая строка.
+//  3. Проверяем наличие кеша в Redis.
+//     - Если есть — возвращаем (кеш-попадание).
+//     - Если нет — идём в БД, сохраняем результат в Redis с TTL.
+//
+// Почему версия в БД:
+//   - При изменении подписок (Create/Update/Delete) мы инкрементим версию в БД.
+//   - Если Redis упал и восстановился — старые ключи не читаются (версия изменилась).
+//   - Если БД cache_control_user недоступна — кеш отключается, идём напрямую в БД.
+//   - Это даёт 100% гарантию, что пользователь никогда не увидит устаревшие данные.
 //
 // Возвращает:
 //   - total: суммарная стоимость (int)
 //   - error: ошибка, если парсинг дат не удался или диапазон невалидный
 func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceName, startDate, endDate string) (int, error) {
-    ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-    defer cancel()  
-    // 1. Парсинг дат
-    startDateTimeDB, err := parseDate(startDate)
-    if err != nil {
-        logger.Warn("GetTotalCost: failed to parse startDate %s: %v", startDate, err)
-        return 0, fmt.Errorf("invalid startDate: %w", err)
-    }
+	// 1. Устанавливаем таймаут на выполнение всего запроса (кеш + БД)
+	//    Если операция займёт больше 3 секунд — контекст отменится.
+	//    3 секунды достаточно для БД (50-200 мс) + кеш (1 мс),
+	//    но защищает от "зависших" запросов под нагрузкой.
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 
-    endDateTimeDB, err := parseEndDate(endDate)
-    if err != nil {
-        logger.Warn("GetTotalCost: failed to parse endDate %s: %v", endDate, err)
-        return 0, fmt.Errorf("invalid endDate: %w", err)
-    }
+	// ============================================================
+	// 2. ПАРСИНГ ДАТ (обязательная валидация перед любыми действиями)
+	// ============================================================
+	startDateTimeDB, err := parseDate(startDate)
+	if err != nil {
+		logger.Warn("GetTotalCost: failed to parse startDate %s: %v", startDate, err)
+		return 0, fmt.Errorf("invalid startDate: %w", err)
+	}
 
-    // 2. Валидация диапазона
-    if err := validateDateRange(startDateTimeDB, endDateTimeDB); err != nil {
-        logger.Warn("GetTotalCost: invalid date range: startDate=%s > endDate=%s", startDate, endDate)
-        return 0, err
-    }
+	endDateTimeDB, err := parseEndDate(endDate)
+	if err != nil {
+		logger.Warn("GetTotalCost: failed to parse endDate %s: %v", endDate, err)
+		return 0, fmt.Errorf("invalid endDate: %w", err)
+	}
 
-    // 3. Вызов репозитория
-    return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+	// Проверяем, что start_date <= end_date
+	if err := validateDateRange(startDateTimeDB, endDateTimeDB); err != nil {
+		logger.Warn("GetTotalCost: invalid date range: startDate=%s > endDate=%s", startDate, endDate)
+		return 0, err
+	}
+
+	// ============================================================
+	// 3. ПОЛУЧАЕМ ВЕРСИЮ КЕША ИЗ БД
+	// ============================================================
+	// Версия хранится в БД, чтобы гарантировать консистентность.
+	// Если БД недоступна — мы не используем кеш, идём напрямую в БД.
+	version, err := s.repo.GetCacheUserVersion(ctx, userID)
+	if err != nil {
+		// При любой ошибке (таблица не найдена, соединение разорвано, таймаут) —
+		// выключаем кеш и идём напрямую в БД.
+		logger.Warn("GetTotalCost: failed to get cache version for user %s: %v, skipping cache", userID, err)
+		return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+	}
+
+	// ============================================================
+	// 4. СТРОИМ КЛЮЧ ДЛЯ REDIS
+	// ============================================================
+	// Ключ включает ВСЕ параметры запроса и версию:
+	//   total:v{version}:{userID}:{serviceName}:{startDate}:{endDate}
+	//
+	// Это гарантирует, что:
+	//   - При изменении данных (инкремент версии) старый кеш перестаёт читаться.
+	//   - Разные комбинации фильтров кешируются отдельно.
+	//   - Пустой serviceName — допустимо.
+	cacheKey := fmt.Sprintf("total:v%d:%s:%s:%s:%s",
+		version,
+		userID,
+		serviceName,
+		startDate,
+		endDate,
+	)
+
+	// ============================================================
+	// 5. ПРОВЕРЯЕМ НАЛИЧИЕ КЕША В REDIS
+	// ============================================================
+	// Если Redis доступен и ключ существует — возвращаем значение.
+	// При ошибке Redis (недоступен, таймаут) — игнорируем кеш, идём в БД.
+	cachedValue, err := cache.Get(ctx, cacheKey)
+		logger.Debug("cacheKey:%s, ctx:%s",cacheKey,ctx )
+	if err == nil && cachedValue > 0 {
+		// Кеш-попадание: возвращаем сохранённое значение.
+		logger.Debug("GetTotalCost: cache hit for key %s, value=%d", cacheKey, cachedValue)
+		return cachedValue, nil
+	}
+
+	// Если Redis вернул ошибку (не redis.Nil, а реальная ошибка подключения) —
+	// логируем предупреждение, но продолжаем работу через БД.
+	// redis.Nil — это не ошибка, а штатное "ключа нет" (кеш-промах).
+	if err != nil && err != redis.Nil {
+		logger.Warn("GetTotalCost: Redis error for key %s: %v, falling back to DB", cacheKey, err)
+	}
+
+	// ============================================================
+	// 6. КЕШ-ПРОМАХ: ИДЁМ В БД
+	// ============================================================
+	// Кеш-промах — штатная ситуация (первый запрос, TTL истёк, данные изменились).
+	// Логируем Debug (не Warn), потому что это нормальная работа.
+	logger.Debug("GetTotalCost: cache miss for key %s, querying DB", cacheKey)
+	total, err := s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+	if err != nil {
+		logger.Error("GetTotalCost: DB query failed: %v", err)
+		return 0, err
+	}
+
+	// ============================================================
+	// 7. СОХРАНЯЕМ РЕЗУЛЬТАТ В REDIS (если доступен)
+	// ============================================================
+	// Сохраняем с TTL = 5 минут.
+	// TTL достаточно короткий, чтобы даже при сбое инвалидации
+	// данные автоматически протухли через 5 минут.
+	const ttl = 5 * time.Minute
+	if err := cache.Set(ctx, cacheKey, total, ttl); err != nil {
+		// Если Redis недоступен — логируем ошибку, но не останавливаем работу.
+		// Пользователь всё равно получит корректные данные из БД.
+		logger.Warn("GetTotalCost: failed to cache result for key %s: %v", cacheKey, err)
+	} else {
+		logger.Debug("GetTotalCost: cached result for key %s, total=%d, ttl=%v", cacheKey, total, ttl)
+	}
+
+	// Возвращаем результат из БД
+	return total, nil
 }
+
+
+
 // CreateSubscription — бизнес-логика создания новой подписки.
 // Параметры:  - ctx: контекст для управления временем жизни запроса
 //             - sub: структура с данными новой подписки (ServiceName, Price, UserID, StartDate, EndDate)

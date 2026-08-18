@@ -33,6 +33,10 @@ func (r *PostgresRepo) CreateSubscription(ctx context.Context, sub models.Subscr
 
     logger.Debug("CreateSubscription: successfully created subscription id=%d for user_id=%s, service=%s",
         id, sub.UserID, sub.ServiceName)
+   // инвалидируем кеш пользователя сразу после окончания создания подписки
+if err := r.IncrementCacheUserVersion(ctx, sub.UserID); err != nil {
+    logger.Warn("CreateSubscription: failed to increment cache version for user %s: %v", sub.UserID, err)
+}     
     return id, nil
 }
 // GetSubscriptionByID : 2 Метод==  получение подписки по ID***************** Read
@@ -91,26 +95,48 @@ func (r *PostgresRepo) UpdateSubscription(ctx context.Context, sub models.Subscr
     }
 
     logger.Debug("UpdateSubscription: successfully updated subscription id %d", sub.ID)
+   // инвалидируем кеш пользователя сразу после окончания обновления подписки
+if err := r.IncrementCacheUserVersion(ctx, sub.UserID); err != nil {
+    logger.Warn("UpdateSubscription: failed to increment cache version for user %s: %v", sub.UserID, err)
+} else {logger.Debug("IncrementCacheUserVersion  err==nil")}
+logger.Debug("UpdateSubscription: ctx=%v, sub.UserID=%s, sub.ID=%d", ctx, sub.UserID, sub.ID)
     return nil
 }
 // DeleteSubscription : 4 Метод== -  удаляет подписку по ID     *************** Delete
-func (r *PostgresRepo) DeleteSubscription(ctx context.Context,id int) error {
+func (r *PostgresRepo) DeleteSubscription(ctx context.Context, id int) error {
+    // 1. ПОЛУЧАЕМ user_id ДО УДАЛЕНИЯ (для инвалидации кеша)
+    var userID string
+    err := r.db.QueryRowContext(ctx, "SELECT user_id FROM subscriptions WHERE id = $1", id).Scan(&userID)
+    if err != nil {
+        logger.Warn("DeleteSubscription: failed to get user_id for subscription %d: %v", id, err)
+        return err
+    }
+
+    // 2. ВЫПОЛНЯЕМ УДАЛЕНИЕ
     query := `DELETE FROM subscriptions WHERE id = $1`
-    result, err := r.db.ExecContext(ctx,query, id)
+    result, err := r.db.ExecContext(ctx, query, id)
     if err != nil {
-	 logger.Error("DeleteSubscription: exec failed for id %d: %v", id, err)	
+        logger.Error("DeleteSubscription: exec failed for id %d: %v", id, err)
         return err
     }
-    exist, err := result.RowsAffected()
+
+    rowsAffected, err := result.RowsAffected()
     if err != nil {
-		   logger.Warn("DeleteSubscription: RowsAffected failed for id %d: %v", id, err)
+        logger.Warn("DeleteSubscription: RowsAffected failed for id %d: %v", id, err)
         return err
     }
-    if exist == 0 {
-		logger.Warn("DeleteSubscription: no rows affected for id %d", id)
+    if rowsAffected == 0 {
+        logger.Warn("DeleteSubscription: no rows affected for id %d", id)
         return sql.ErrNoRows
     }
-	 logger.Debug("DeleteSubscription: successfully deleted subscription id %d", id)
+
+    logger.Debug("DeleteSubscription: successfully deleted subscription id %d", id)
+
+    // 3. ИНВАЛИДИРУЕМ КЕШ ПОЛЬЗОВАТЕЛЯ (user_id уже получен до удаления)
+    if err := r.IncrementCacheUserVersion(ctx, userID); err != nil {
+        logger.Warn("DeleteSubscription: failed to increment cache version for user %s: %v", userID, err)
+    }
+
     return nil
 }
 // ListSubscriptions : 5 Метод== - получение списка подписок,
@@ -178,7 +204,7 @@ func (r *PostgresRepo) GetTotalCost(ctx context.Context,userID, serviceName stri
 		 0) AS total
                       FROM subscriptions WHERE start_date <= $2 AND (end_date IS NULL OR end_date >= $1)`
 
-    args := []interface{}{startDate, endDate }
+    args := []any{startDate, endDate }
 
     if userID != "" {
         query += " AND user_id = $" + strconv.Itoa(len(args)+1)

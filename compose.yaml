@@ -27,8 +27,11 @@ services:
           cpus: '1.0'      
     environment:
       - ENV=docker                                   # переменная окружения для приложения Go (передаёт инфу, что Docker запущен)
+      - LOG_PATH=/var/log/app/app.log                # переопределяет .env для работы сервера в доккере и записи логов в контейнере
     volumes:
       - ./logs:/var/log/app                          # монтирует и связывает папки на ПК logs и /var/log/app в контейнере (логи сохраняются локально)
+      - /etc/localtime:/etc/localtime:ro             # синхронизация времени
+      - /etc/timezone:/etc/timezone:ro
     build: .                                         # создание Docker-образа из Dockerfile в текущей папке
     env_file: 
       - .env                                         # берём данные окружения из файла .env на ПК
@@ -37,6 +40,8 @@ services:
     depends_on:
       db:
         condition: service_healthy                    # контейнер server запустится только после того, как БД станет healthy
+      redis:
+        condition: service_healthy  
     networks:
       - app-network                                  # внутренняя сеть для общения с БД
 
@@ -67,7 +72,7 @@ services:
       retries: 5                                     # 5 попыток (максимум 50 секунд)
     networks:
       - app-network                                  # внутренняя сеть для общения с сервером
- # ============================================================
+  # ============================================================
   # СЕРВИС: grafana
   # ============================================================      
   grafana:
@@ -79,6 +84,9 @@ services:
       - grafana-data:/var/lib/grafana
     networks:
       - app-network
+  # ============================================================
+  # СЕРВИС: prometheus
+  # ============================================================ 
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -86,16 +94,40 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
     networks:
       - app-network    
+  # ============================================================
+  # СЕРВИС: REDIS (КЕШ)
+  # ============================================================
+  redis:
+    container_name: subscription-redis          # имя контейнера (для docker ps и docker exec)
+    image: redis:7-alpine                       # официальный образ Redis на Alpine (маленький вес)
+    restart: unless-stopped                     # перезапускать, если не был остановлен вручную
+    deploy:                                     # ограничение ресурсов
+      resources:
+        limits:
+          memory: 256M                          # максимум памяти для Redis
+          cpus: '0.5'                           # максимум CPU (пол-ядра)
+    ports:
+      - "${REDIS_PORT:-6379}:6379"              # порт снаружи : порт внутри
+    volumes:
+      - redis-data:/data                        # сохраняем данные Redis на диске (том)
+    networks:
+      - app-network                             # общая сеть с сервером и БД
+    healthcheck:                                # проверка работоспособности
+      test: ["CMD", "redis-cli", "ping"]        # команда Ping (если ответит PONG — здоров)
+      interval: 10s                             # проверять каждые 10 секунд
+      timeout: 5s                               # ждать ответа до 5 секунд
+      retries: 5                                # 5 попыток, после чего контейнер считается unhealthy
 # ============================================================
 # ОБЪЯВЛЕНИЕ ТОМОВ (хранилища данных)
-# ============================================================
+# ============================================================ 
 volumes:
-  postgres-db:                                       # именованный том для PostgreSQL на ПК (создаётся и управляется Docker)
-    driver: local                                    # явно указываем локальный драйвер (значение по умолчанию)
-  grafana-data: 
-
+  postgres-db:                       # именованный том для PostgreSQL на ПК (создаётся и управляется Docker)
+  grafana-data:                      # именованный том для grafana на    ПК (создаётся и управляется Docker)
+  redis-data:                        # именованный том для redis на      ПК (создаётся и управляется Docker)
+  prometheus-data:                   # именованный том для prometheus на ПК (создаётся и управляется Docker)
 # ============================================================
 # ОБЪЯВЛЕНИЕ СЕТЕЙ (внутренняя изоляция контейнеров)
 # ============================================================
