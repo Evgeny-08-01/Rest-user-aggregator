@@ -28,34 +28,40 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.60
-          args: --timeout=5m
+          args: --timeout=5m   
   job1:
     name: test                            #проверять код на наличие ошибок и запускать тесты
     runs-on: ubuntu-latest                # Указываем окружение-виртуальная машина ubuntu-latest
     needs: lint                           # Ждём успешного линта
+    services:          #  СЕРВИСЫ (Redis)
+      redis:
+        image: redis:7-alpine
+        ports:
+         - 6379:6379
+        options: >-   # ← здесь, внутри redis
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5 
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: mysecret
+          POSTGRES_DB: subscriptions
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: clone                       # Клонирование репозитория
         uses: actions/checkout@v4         # Этот шаг использует действие "actions/checkout@v4", которое проверит текущий код в репозитории
       - name: Set up Go                   # название для установки Go на виртуальную машину
         uses: actions/setup-go@v4         # Этот шаг использует действие "actions/setup-go@v4", которое установит Go в систему   
         with:                             # Для этого действия можно задать версию Go, которую надо установить   
-          go-version: '1.23' 
-      - name: Start PostgreSQL               # Запускаем базу данных для тестов
-
-        run: |                               # Многострочная команда для выполнения в bash
-          docker run -d \
-            --name postgres \
-            -e POSTGRES_PASSWORD=mysecret \
-            -e POSTGRES_DB=subscriptions \
-            -p 5432:5432 \
-            postgres:16                      
-          sleep 5                              
-# Запускаем Docker-контейнер в фоновом режиме (-d = detach)
-# Даём контейнеру имя "postgres" (чтобы обращаться по нему)
-# Устанавливаем пароль для пользователя postgres 
-# Пробрасываем порт: хост(снаружи):контейнер(внутри), чтобы подключаться с виртуалки
-# Ждём 5 секунд, чтобы PostgreSQL успел запуститься и стать доступным для подключения  
-# Используем официальный образ PostgreSQL версии 16 из Docker Hub
+          go-version: '1.23'    
       - name: Build                       # название
         run: go build -v ./...            # компиляция бинарника
       - name: Test                        #-название
