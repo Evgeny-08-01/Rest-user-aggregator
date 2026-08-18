@@ -62,7 +62,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("Failed to init DB: " + err.Error())
 	}
-	defer Close()
+	defer func() {
+    if err := Close(); err != nil {
+        logger.Warn("Failed to close database: %v", err)
+    }
+}()
 
 	// 2. ОЧИЩАЕМ ТАБЛИЦЫ
 	if err := CleanTestTable(); err != nil {

@@ -64,7 +64,6 @@ func run() error {
 	loadEnv()
 	// 2. Инициализация моего Логгера
 	initLogger()
-	   log.Println("DEBUG: after initLogger")
     // 3. Redis
     if err := initRedis(); err != nil {
         logger.Warn("Redis unavailable, continuing without cache: %v", err)
@@ -111,7 +110,6 @@ func loadEnv() {
 
 // 4.2 Инициализация моего логгера(читаем уровень из .env)
 func initLogger() {
-	log.Println("DEBUG: initLogger start")
 	logLevel := os.Getenv("LOG_LEVEL") // читает переменную окружения LOG_LEVEL
 	logPath := os.Getenv("LOG_PATH")   // читает переменную окружения LOG_PATH
 //	loggerType := os.Getenv("LOGGER") 
