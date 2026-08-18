@@ -31,6 +31,8 @@ import (
 
 	"Rest-user-agregator/internal/models" // Наши модели данных
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	"Rest-user-agregator/pkg/logger"
 )
 
 // ============================================================
@@ -45,31 +47,30 @@ import (
 //   4. Запускает все тесты
 // ============================================================
 func TestMain(m *testing.M) {
-	// 1. ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
-	//    Используем локальную БД (порт 5432)
-	//    Если БД не запущена — тесты упадут
-	err := Init("postgres://postgres:1212@localhost:5432/subscriptions?sslmode=disable")
-	if err != nil {
-		// panic — аварийно завершаем, если БД не доступна
-		panic("Failed to init DB: " + err.Error())
+	// 0. ЗАГРУЖАЕМ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ИЗ .env.test
+	if err := godotenv.Load("../../.env.test"); err != nil {
+		logger.Warn(".env.test not found, using env vars")
 	}
 
-	// 2. ОТЛОЖЕННОЕ ЗАКРЫТИЕ СОЕДИНЕНИЯ
-	//    Выполнится после всех тестов, даже если они упадут
-//	defer Close()
+	// 1. ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		panic("DB_PATH not set, cannot run tests")
+	}
 
-	// 3. ОЧИЩАЕМ ТАБЛИЦЫ ПЕРЕД ТЕСТАМИ
-	//    Удаляем все записи, сбрасываем счётчик ID
+	err := Init(dbPath)
+	if err != nil {
+		panic("Failed to init DB: " + err.Error())
+	}
+	defer Close()
+
+	// 2. ОЧИЩАЕМ ТАБЛИЦЫ
 	if err := CleanTestTable(); err != nil {
 		panic("Failed to clean table: " + err.Error())
 	}
 
-	// 4. ЗАПУСК ВСЕХ ТЕСТОВ
-	//    m.Run() возвращает код выхода (0 — успех, 1 — ошибка)
+	// 3. ЗАПУСК ТЕСТОВ
 	code := m.Run()
-
-	// 5. ВЫХОД С КОДОМ
-	//    Передаём код результата в систему
 	os.Exit(code)
 }
 

@@ -65,6 +65,9 @@ func TestMain(m *testing.M) {
 		// Используем panic, чтобы остановить выполнение
 		panic("Failed to init DB: " + err.Error())
 	}
+if err := database.RunMigrations(); err != nil {
+    panic("Failed to run migrations: " + err.Error())
+}	
 // Инициализация Redis
 redisAddr := os.Getenv("REDIS_ADDR")
 if redisAddr == "" {
