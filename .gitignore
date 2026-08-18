@@ -56,3 +56,6 @@ insert_data.sql
 login.json
 1.goo
 gen_hash.go
+subscription_app
+coverage.out
+coverage_full.out
