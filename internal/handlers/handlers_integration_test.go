@@ -44,7 +44,6 @@ func TestMain(m *testing.M) {
 	// 1. ЗАГРУЖАЕМ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
 	//    Файл .env.test лежит в корне проекта (на два уровня выше)
 	//    Если файл не найден — тесты пропускаются (но не падают)
-	godotenv.Load("../../.env.test")
 	if err := godotenv.Load("../../.env.test"); err != nil {
     log.Println("WARNING: .env.test not found, using env vars")
 }
@@ -498,7 +497,9 @@ func TestListSubscriptionsHandler(t *testing.T) {
 
 		// Проверяем, что в списке не меньше 3 записей
 		var list []models.Subscription
-		json.NewDecoder(w.Body).Decode(&list)
+	if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
+    t.Fatalf("Failed to decode list: %v", err)
+}
 		if len(list) < 3 {
 			t.Errorf("expected at least 3, got %d", len(list))
 		}
