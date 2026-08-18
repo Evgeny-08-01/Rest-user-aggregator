@@ -17,9 +17,9 @@ import (
 
 	"Rest-user-agregator/internal/authentication" //для аутентификации пользователей       // для работы с Redis
 	"Rest-user-agregator/internal/cache"
-	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/service"
+	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/pkg/logger"
 
 	"github.com/golang-jwt/jwt/v5" // для генерации JWT

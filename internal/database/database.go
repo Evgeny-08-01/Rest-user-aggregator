@@ -125,13 +125,12 @@ func NewPostgresRepo() *PostgresRepo {
 func GetDB() *sql.DB {
     return db
 }
-// CreateTestTable создаёт таблицу для тестов (если её нет)
 func CreateTestTable() error {
     if db == nil {
-        err := errors.New("database not initialized")
-        logger.Error("CreateTestTable: %v", err)
-        return err
+        return errors.New("database not initialized")
     }
+
+    // Создаём subscriptions
     _, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS subscriptions (
             id SERIAL PRIMARY KEY,
@@ -143,14 +142,41 @@ func CreateTestTable() error {
         )
     `)
     if err != nil {
-        logger.Error("CreateTestTable: failed to create table: %v", err)
+        logger.Error("CreateTestTable: failed to create subscriptions: %v", err)
         return err
     }
-    logger.Debug("CreateTestTable: table created or already exists")
+
+    // Создаём users
+    _, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    `)
+    if err != nil {
+        logger.Error("CreateTestTable: failed to create users: %v", err)
+        return err
+    }
+
+    // Создаём cache_control_user
+    _, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS cache_control_user (
+            user_id UUID PRIMARY KEY,
+            version INT NOT NULL DEFAULT 1
+        )
+    `)
+    if err != nil {
+        logger.Error("CreateTestTable: failed to create cache_control_user: %v", err)
+        return err
+    }
+
+    logger.Debug("CreateTestTable: all tables created or already exists")
     return nil
 }
 
-// CleanTestTable очищает таблицу перед тестами
 // CleanTestTable очищает таблицу перед тестами
 func CleanTestTable() error {
     if db == nil {
