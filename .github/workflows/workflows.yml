@@ -12,7 +12,8 @@ env:
   LOG_LEVEL: info
   ENV: docker
   LOG_PATH: /var/log/app/app.log
-  SERVER_PORT: 8080
+  SERVER_PORT: 8087
+  JWT_SECRET: test-secret-key-for-ci
 jobs:
   lint:
     name: lint                            # проверка кода линтером
