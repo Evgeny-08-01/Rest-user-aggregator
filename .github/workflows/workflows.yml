@@ -8,7 +8,7 @@ on:                                       # запуск по заливке к�
   push:              # Все пуши во все ветки
   pull_request:      # Все PR во все ветки
 env:                                              
-  DB_PATH: postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable
+  DB_PATH: postgres://postgres:mysecret@postgres:5432/subscriptions?sslmode=disable
   LOG_LEVEL: info
   ENV: docker
   LOG_PATH: /var/log/app/app.log
@@ -72,7 +72,7 @@ jobs:
         run: go test -v -tags=integration -p 1 -count=1 ./... # запуск интеграционных тестов последовательно и без кэширования
            
   job2:
-    name: publish                              # при добавлении тегов должен автоматически публиковать приложение в DockerHub.
+    name: publish                  # при добавлении тегов должен автоматически публиковать приложение в DockerHub.
     runs-on: ubuntu-latest                     # Указываем окружение
     needs: job1                                # Задача test должна быть завершена до запуска publish
     if: startsWith(github.ref, 'refs/tags/')   # Проверка, что тег начинается с "refs/tags"
