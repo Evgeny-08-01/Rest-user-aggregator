@@ -130,24 +130,8 @@ func CreateTestTable() error {
         return errors.New("database not initialized")
     }
 
-    // Создаём subscriptions
-    _, err := db.Exec(`
-        CREATE TABLE IF NOT EXISTS subscriptions (
-            id SERIAL PRIMARY KEY,
-            service_name VARCHAR(255) NOT NULL,
-            price INTEGER NOT NULL,
-            user_id UUID NOT NULL,
-            start_date DATE NOT NULL,
-            end_date DATE
-        )
-    `)
-    if err != nil {
-        logger.Error("CreateTestTable: failed to create subscriptions: %v", err)
-        return err
-    }
-
     // Создаём users
-    _, err = db.Exec(`
+    _, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS users (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             email TEXT UNIQUE NOT NULL,
@@ -158,6 +142,22 @@ func CreateTestTable() error {
     `)
     if err != nil {
         logger.Error("CreateTestTable: failed to create users: %v", err)
+        return err
+    }
+
+    // Создаём subscriptions
+    _, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            id SERIAL PRIMARY KEY,
+            service_name VARCHAR(255) NOT NULL,
+            price INTEGER NOT NULL,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            start_date DATE NOT NULL,
+            end_date DATE
+        )
+    `)
+    if err != nil {
+        logger.Error("CreateTestTable: failed to create subscriptions: %v", err)
         return err
     }
 
@@ -244,6 +244,7 @@ func DeleteSubscriptionsByUserID(userID string) error {
         logger.Error("DeleteSubscriptionsByUserID: %v", err)
         return err
     }
+
     _, err := db.Exec("DELETE FROM subscriptions WHERE user_id = $1", userID)
     if err != nil {
         logger.Error("DeleteSubscriptionsByUserID: failed to delete for user_id=%s: %v", userID, err)

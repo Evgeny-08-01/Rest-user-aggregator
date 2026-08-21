@@ -17,9 +17,9 @@ import (
 
 	"Rest-user-agregator/internal/authentication" //для аутентификации пользователей       // для работы с Redis
 	"Rest-user-agregator/internal/cache"
+	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/service"
-	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/pkg/logger"
 
 	"github.com/golang-jwt/jwt/v5" // для генерации JWT
@@ -167,11 +167,21 @@ func addAdminContext(req *http.Request) *http.Request {
 //   4. Проверяем, что статус ответа совпадает с ожидаемым
 // ============================================================
 func TestCreateSubscriptionHandler(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
 	 if err := database.CleanTestTable(); err != nil {
         t.Logf("Failed to clean table: %v", err)
         t.Fatalf("Cannot continue test without clean table")
     }
     t.Log("Table cleaned successfully")
+    // Создаем тестового пользователя
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)
+    // Устанавливаем обработчик
 	handler := setupTestHandler()
 
 	// Таблица тестов: название, тело запроса, ожидаемый статус
@@ -256,11 +266,20 @@ func TestCreateSubscriptionHandler(t *testing.T) {
 //   5. Проверяем, что ответ содержит правильные данные
 // ============================================================
 func TestGetSubscriptionHandler(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
  if err := database.CleanTestTable(); err != nil {
         t.Logf("Failed to clean table: %v", err)
         t.Fatalf("Cannot continue test without clean table")
     }
     t.Log("Table cleaned successfully")
+     // Создаем тестового пользователя
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)   
 	handler := setupTestHandler()
 
 	// 1. СОЗДАЁМ ТЕСТОВУЮ ПОДПИСКУ
@@ -335,11 +354,20 @@ if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 //   3. Проверяем статус ответа
 // ============================================================
 func TestUpdateSubscriptionHandler(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
 	 if err := database.CleanTestTable(); err != nil {
         t.Logf("Failed to clean table: %v", err)
         t.Fatalf("Cannot continue test without clean table")
     }
     t.Log("Table cleaned successfully")
+      // Создаем тестового пользователя
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)   
 	handler := setupTestHandler()
 
 	// 1. СОЗДАЁМ ТЕСТОВУЮ ПОДПИСКУ
@@ -405,11 +433,20 @@ if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 //   3. Проверяем статус ответа
 // ============================================================
 func TestDeleteSubscriptionHandler(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
 	 if err := database.CleanTestTable(); err != nil {
         t.Logf("Failed to clean table: %v", err)
         t.Fatalf("Cannot continue test without clean table")
     }
     t.Log("Table cleaned successfully")
+       // Создаем тестового пользователя
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)      
 	handler := setupTestHandler()
 
 	// 1. СОЗДАЁМ ПОДПИСКУ
@@ -468,22 +505,31 @@ if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 //   4. Проверяем, что в ответе минимум 3 записи
 // ============================================================
 func TestListSubscriptionsHandler(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
 	 if err := database.CleanTestTable(); err != nil {
         t.Logf("Failed to clean table: %v", err)
         t.Fatalf("Cannot continue test without clean table")
     }
     t.Log("Table cleaned successfully")
+         // Создаем тестового пользователя
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)    
 	handler := setupTestHandler()
 
 	// 1. ОЧИЩАЕМ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
 	//    Удаляем все подписки с этим user_id, чтобы не было конфликтов
-	if err := database.DeleteSubscriptionsByUserID("550e8400-e29b-41d4-a716-446655440001"); err != nil {
+	if err := database.DeleteSubscriptionsByUserID("550e8400-e29b-41d4-a716-446655440000"); err != nil {
 		t.Fatalf("Failed to clean test data: %v", err)
 	}
 
 	// 2. СОЗДАЁМ 3 ТЕСТОВЫЕ ПОДПИСКИ
 	for i := 1; i <= 3; i++ {
-		body := `{"service_name":"ListTest","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440001","start_date":"07-2025"}`
+		body := `{"service_name":"ListTest","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`
 		req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(body)))
 		req = addAdminContext(req)
 		w := httptest.NewRecorder()
@@ -541,6 +587,12 @@ func TestListSubscriptionsHandler(t *testing.T) {
 //   и отражают реальное поведение формулы.
 // ============================================================
 func TestGetTotalCostHandler(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
 	handler := setupTestHandler()
     // Очищаем ВСЮ таблицу перед тестом
     if err := database.CleanTestTable(); err != nil {
@@ -548,8 +600,9 @@ func TestGetTotalCostHandler(t *testing.T) {
     }
     t.Log("Table cleaned successfully")
 	
-	// ID пользователя для теста
-	userID := "550e8400-e29b-41d4-a716-446655440002"
+         // Создаем тестового пользователя
+    userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)    
 
 
 	// 2. СОЗДАЁМ 3 ПОДПИСКИ
@@ -785,14 +838,22 @@ func createTestUser(t *testing.T, userID string) string {
 //   6. Проверяем, что в Redis есть ключ с v2, а старый v1 игнорируется.
 // ============================================================
 func TestCacheInvalidationAfterCreate(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
     // 1. ОЧИЩАЕМ ТАБЛИЦЫ ПЕРЕД ТЕСТОМ
     if err := database.CleanTestTable(); err != nil {
         t.Fatalf("CleanTestTable failed: %v", err)
     }
     t.Log("Table cleaned successfully")
-
-    handler := setupTestHandler()
+         // Создаем тестового пользователя
     userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)    
+    handler := setupTestHandler()
+
 
     // 2. СОЗДАЁМ ПОЛЬЗОВАТЕЛЯ И ПОЛУЧАЕМ ТОКЕН
     token := createTestUser(t, userID)
@@ -927,14 +988,22 @@ func addTestContext(req *http.Request, userID, role string) *http.Request {
 //   5. Проверяем, что в Redis есть ключ с v2.
 // ============================================================
 func TestCacheInvalidationAfterUpdate(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
     // 1. ОЧИЩАЕМ ТАБЛИЦЫ ПЕРЕД ТЕСТОМ
     if err := database.CleanTestTable(); err != nil {
         t.Fatalf("CleanTestTable failed: %v", err)
     }
     t.Log("Table cleaned successfully")
-
-    handler := setupTestHandler()
+         // Создаем тестового пользователя
     userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)   
+    handler := setupTestHandler()
+
     token := createTestUser(t, userID)
 
     // 2. СОЗДАЁМ ПОДПИСКУ (POST)
@@ -1053,14 +1122,22 @@ func TestCacheInvalidationAfterUpdate(t *testing.T) {
 //   5. Проверяем, что в Redis есть ключ с v2.
 // ============================================================
 func TestCacheInvalidationAfterDelete(t *testing.T) {
+     t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
     // 1. ОЧИЩАЕМ ТАБЛИЦЫ ПЕРЕД ТЕСТОМ
     if err := database.CleanTestTable(); err != nil {
         t.Fatalf("CleanTestTable failed: %v", err)
     }
     t.Log("Table cleaned successfully")
-
-    handler := setupTestHandler()
+         // Создаем тестового пользователя
     userID := "550e8400-e29b-41d4-a716-446655440000"
+    createTestUser(t, userID)   
+    handler := setupTestHandler()
+
     token := createTestUser(t, userID)
 
     // 2. СОЗДАЁМ ПОДПИСКУ (POST)
@@ -1166,3 +1243,4 @@ func TestCacheInvalidationAfterDelete(t *testing.T) {
 
     t.Log("Both v1 and v2 keys exist — v1 is ignored because version changed")
 }
+// createTestUser создаёт тестового пользователя, если его ещё нет
