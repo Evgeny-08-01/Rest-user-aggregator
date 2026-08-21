@@ -156,6 +156,15 @@ func TestCleanTestTable(t *testing.T) {
 //   - Без этого теста мы не знаем, работает ли регистрация
 // ============================================================
 func TestCreateUser(t *testing.T) {
+	    // 1. УДАЛЯЕМ таблицы
+    if err := DropTestTable(); err != nil {
+        t.Fatalf("DropTestTable failed: %v", err)
+    }
+
+    // 2. СОЗДАЁМ таблицы заново
+    if err := CreateTestTable(); err != nil {
+        t.Fatalf("CreateTestTable failed: %v", err)
+    }
 		 t.Cleanup(func() {
         if err := CleanTestTable(); err != nil {
             t.Logf("Cleanup failed: %v", err)
@@ -183,7 +192,19 @@ func TestCreateUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
+//////////////////////////////////////////////////////////////////////////////////////////////////	
+// ✅ ПРЯМОЙ SQL-ЗАПРОС К БД
+var count int
+err = repo.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM users WHERE email = $1", user.Email).Scan(&count)
+if err != nil {
+    t.Fatalf("Direct query failed: %v", err)
+}
+t.Logf("🔍 Direct SQL check: found %d users with email %s", count, user.Email)
 
+if count == 0 {
+    t.Fatal("❌ User NOT found in DB after CreateUser!")
+}
+//////////////////////////////////////////////////////////////////////////////////////////////////
 	// 4. ПРОВЕРЯЕМ, ЧТО ПОЛЬЗОВАТЕЛЬ СОХРАНИЛСЯ
 	//    Ищем по email — если найден, значит создание прошло успешно
 	saved, err := repo.GetUserByEmail(context.Background(), user.Email)

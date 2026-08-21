@@ -18,6 +18,9 @@ import (
 // Возвращает: error
 // ============================================================
 func (r *PostgresRepo) CreateUser(ctx context.Context, user models.User) error {
+	/////////////////////////////////////////////////////////////////////////////////////////////////
+	    logger.Debug("🔍 CreateUser: inserting email: %s", user.Email)
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	query := `INSERT INTO users (id, email, password_hash, role) VALUES ($1, $2, $3, $4)`
 
 	_, err := r.db.ExecContext(ctx, query, user.ID, user.Email, user.Password, user.Role)
@@ -39,6 +42,10 @@ func (r *PostgresRepo) CreateUser(ctx context.Context, user models.User) error {
 // Если пользователь не найден — возвращает nil, nil
 // ============================================================
 func (r *PostgresRepo) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	///////////////////////////////////////////////////////////////////////////////////////////////
+	    // ✅ ВЫВОДИМ email, КОТОРЫЙ ИЩЕМ
+    logger.Debug("GetUserByEmail: searching for email: %s", email)
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 	query := `SELECT id, email, password_hash, role, created_at FROM users WHERE email = $1`
 
 	row := r.db.QueryRowContext(ctx, query, email)
