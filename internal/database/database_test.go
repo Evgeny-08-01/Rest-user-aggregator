@@ -18,7 +18,7 @@
 //   - Каждый тест начинается с очистки таблиц
 // ============================================================
 
-//g o:build integration
+//go:build integration
 
 package database
 
@@ -49,11 +49,20 @@ import (
 //   4. Запускает все тесты
 // ============================================================
 func TestMain(m *testing.M) {
+////////////////////////////////////////////////////////////////////////////////////	
+	    log.Println("=== TestMain START ===")
+///////////////////////////////////////////////////////////////////////////////////
 	// 0. ЗАГРУЖАЕМ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ИЗ .env.test
 	if err := godotenv.Load("../../.env.test"); err != nil {
 		logger.Warn(".env.test not found, using env vars")
 	}
-
+	////////////////////////////////////////////////////////////////////////////
+ log.Printf("DB_PATH: %s", dbPath)
+     if db == nil { // ← добавить
+        log.Fatal("❌ db is nil!")
+    }
+    log.Println("✅ db is not nil")
+ //////////////////////////////////////////////////////////////////////////////
 	// 1. ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
@@ -81,9 +90,14 @@ if err := CreateTestTable(); err != nil {
 	if err := CleanTestTable(); err != nil {
 		panic("Failed to clean table: " + err.Error())
 	}
-
+	///////////////////////////////////////////////////////////////////////////
+log.Println("=== TestMain RUNNING TESTS ===") 
+///////////////////////////////////////////////////////////////////////////////
 	// 3. ЗАПУСК ТЕСТОВ
 	code := m.Run()
+/////////////////////////////////////////////////////////////////////////////////
+	log.Printf("=== TestMain FINISHED with code %d ===", code)
+	///////////////////////////////////////////////////////////////////////////
 	os.Exit(code)
 }
 
@@ -175,9 +189,12 @@ func TestCreateUser(t *testing.T) {
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("CleanTestTable failed: %v", err)
 	}
-
-	repo := NewPostgresRepo()
-
+repo := NewPostgresRepo()
+///////////////////////////////////////////////////////////////////////////////////////////////
+    if repo == nil {
+        t.Fatal("❌ repo is nil! Database not initialized.")
+    }
+////////////////////////////////////////////////////////////////////////////////////////////
 	// 2. ПОДГОТАВЛИВАЕМ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ
 	//    ID — UUID, Email — уникальный, Password — хеш
     user := models.User{
@@ -188,7 +205,11 @@ func TestCreateUser(t *testing.T) {
 }
 	// 3. ВЫЗЫВАЕМ МЕТОД СОЗДАНИЯ
 	//    context.Background() — пустой контекст для тестов
-	err := repo.CreateUser(context.Background(), user)
+////////////////////////////////////////////////////////////////////////////	
+    t.Log("🔍 Before CreateUser") 
+    err := repo.CreateUser(context.Background(), user)
+    t.Log("🔍 After CreateUser") 
+/////////////////////////////////////////////////////////////////////////////	
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
