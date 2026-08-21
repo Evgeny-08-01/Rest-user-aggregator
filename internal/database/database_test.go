@@ -67,6 +67,10 @@ func TestMain(m *testing.M) {
         logger.Warn("Failed to close database: %v", err)
     }
 }()
+// Удаляем таблицы перед тестами
+if err := DropTestTable(); err != nil {
+    panic("Failed to drop table: " + err.Error())
+}
 // Создаём таблицы перед тестами
 if err := CreateTestTable(); err != nil {
     panic("Failed to create test table: " + err.Error())

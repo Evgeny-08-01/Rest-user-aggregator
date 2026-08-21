@@ -17,13 +17,13 @@ func TestCreateRESTServer(t *testing.T) {
 	srv := createRESTServer(svc, authSvc)
 
 	if srv == nil {
-		t.Error("❌ REST server is nil")
+		t.Error("REST server is nil")
 	}
 	if srv.Handler == nil {
-		t.Error("❌ REST server handler is nil")
+		t.Error("REST server handler is nil")
 	}
 	if srv.Addr == "" {
-		t.Error("❌ REST server port is empty")
+		t.Error("REST server port is empty")
 	}
 }
 
@@ -36,12 +36,12 @@ func TestCreateRESTServerWithCustomPort(t *testing.T) {
 	srv := createRESTServer(svc, authSvc)
 
 	if srv == nil {
-		t.Error("❌ REST server is nil")
+		t.Error("REST server is nil")
 	}
 	if srv.Addr != ":9999" {
-		t.Errorf("❌ Expected port :9999, got %s", srv.Addr)
+		t.Errorf("Expected port :9999, got %s", srv.Addr)
 	} else {
-		t.Log("✅ REST server created with custom port :9999")
+		t.Log("REST server created with custom port :9999")
 	}
 }
 
@@ -49,19 +49,19 @@ func TestCreateGRPCServer(t *testing.T) {
     svc, _ := buildServices()
     srv, lis, err := createGRPCServer(svc)
     
-    // ✅ ДОБАВИТЬ: закрываем listener после теста
+    // ДОБАВИТЬ: закрываем listener после теста
     if lis != nil {
         defer lis.Close()
     }
     
     if err != nil {
-        t.Errorf("❌ createGRPCServer failed: %v", err)
+        t.Errorf("createGRPCServer failed: %v", err)
     }
     if srv == nil {
-        t.Error("❌ gRPC server is nil")
+        t.Error("gRPC server is nil")
     }
     if lis == nil {
-        t.Error("❌ gRPC listener is nil")
+        t.Error("gRPC listener is nil")
     }
 }
 func TestCreateGRPCServerWithCustomPort(t *testing.T) {
@@ -73,15 +73,15 @@ func TestCreateGRPCServerWithCustomPort(t *testing.T) {
 	srv, lis, err := createGRPCServer(svc)
 
 	if err != nil {
-		t.Logf("⚠️ createGRPCServer error: %v", err)
+		t.Logf("createGRPCServer error: %v", err)
 	}
 	if srv == nil {
-		t.Error("❌ gRPC server is nil")
+		t.Error("gRPC server is nil")
 	}
 	if lis == nil {
-		t.Error("❌ gRPC listener is nil")
+		t.Error("gRPC listener is nil")
 	} else {
-		t.Log("✅ gRPC server created with custom port :9999")
+		t.Log("gRPC server created with custom port :9999")
 		lis.Close()
 	}
 }
@@ -95,14 +95,14 @@ func TestCreateGRPCServerError(t *testing.T) {
 	srv, lis, err := createGRPCServer(svc)
 
 	if err == nil {
-		t.Log("⚠️ Port 50051 is free, skipping error test")
+		t.Log("Port 50051 is free, skipping error test")
 	} else {
-		t.Logf("✅ createGRPCServer correctly failed: %v", err)
+		t.Logf("createGRPCServer correctly failed: %v", err)
 		if srv != nil {
-			t.Error("❌ gRPC server should be nil on error")
+			t.Error("gRPC server should be nil on error")
 		}
 		if lis != nil {
-			t.Error("❌ gRPC listener should be nil on error")
+			t.Error("gRPC listener should be nil on error")
 		}
 	}
 }
@@ -115,10 +115,10 @@ func TestBuildServices(t *testing.T) {
 	svc, authSvc := buildServices()
 
 	if svc == nil {
-		t.Error("❌ SubscriptionService is nil")
+		t.Error("SubscriptionService is nil")
 	}
 	if authSvc == nil {
-		t.Error("❌ AuthService is nil")
+		t.Error("AuthService is nil")
 	}
 }
 
@@ -132,7 +132,7 @@ func TestInitRedis(t *testing.T) {
 	}
 	err := initRedis()
 	if err != nil {
-		t.Logf("⚠️ Redis not available: %v", err)
+		t.Logf("Redis not available: %v", err)
 	}
 }
 
@@ -143,9 +143,9 @@ func TestInitRedisCustomAddr(t *testing.T) {
 
 	err := initRedis()
 	if err != nil {
-		t.Logf("✅ initRedis failed with custom address: %v", err)
+		t.Logf("initRedis failed with custom address: %v", err)
 	} else {
-		t.Log("⚠️ initRedis succeeded with custom address (unexpected)")
+		t.Log("initRedis succeeded with custom address (unexpected)")
 	}
 }
 
@@ -156,9 +156,9 @@ func TestInitRedisError(t *testing.T) {
 
 	err := initRedis()
 	if err != nil {
-		t.Logf("✅ initRedis correctly failed: %v", err)
+		t.Logf("initRedis correctly failed: %v", err)
 	} else {
-		t.Error("❌ initRedis should fail with wrong address")
+		t.Error("initRedis should fail with wrong address")
 	}
 }
 
@@ -170,14 +170,14 @@ func TestLoadEnv(t *testing.T) {
 	loadEnv()
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		t.Log("⚠️ DB_PATH not set (this is OK if .env not exists)")
+		t.Log("DB_PATH not set (this is OK if .env not exists)")
 	}
 }
 
 func TestLoadEnvWithFile(t *testing.T) {
 	tmpFile, err := os.Create(".env.test")
 	if err != nil {
-		t.Skip("❌ Cannot create test .env file")
+		t.Skip("Cannot create test .env file")
 	}
 	defer os.Remove(".env.test")
 
@@ -191,9 +191,9 @@ func TestLoadEnvWithFile(t *testing.T) {
 	loadEnv()
 
 	if os.Getenv("TEST_VAR") == "test_value" {
-		t.Log("✅ loadEnv loaded .env file")
+		t.Log("loadEnv loaded .env file")
 	} else {
-		t.Log("⚠️ loadEnv did not load .env")
+		t.Log("loadEnv did not load .env")
 	}
 	os.Setenv("TEST_VAR", oldEnv)
 }
@@ -213,7 +213,7 @@ func TestInitLogger(t *testing.T) {
 	os.Setenv("LOG_PATH", oldPath)
 	os.Setenv("ENV", oldEnv)
 
-	t.Log("✅ Logger initialized")
+	t.Log("Logger initialized")
 }
 
 func TestInitLoggerDocker(t *testing.T) {
@@ -226,7 +226,7 @@ func TestInitLoggerDocker(t *testing.T) {
 	os.Setenv("ENV", "docker")
 
 	initLogger()
-	t.Log("✅ Logger initialized with Docker settings")
+	t.Log("Logger initialized with Docker settings")
 
 	os.Setenv("LOG_PATH", oldPath)
 	os.Setenv("LOG_LEVEL", oldLevel)
@@ -238,11 +238,11 @@ func TestInitPprof(t *testing.T) {
 
 	os.Setenv("PPROF_ENABLED", "false")
 	initPprof()
-	t.Log("✅ Pprof skipped when disabled")
+	t.Log("Pprof skipped when disabled")
 
 	os.Setenv("PPROF_ENABLED", "true")
 	initPprof()
-	t.Log("✅ Pprof started in goroutine")
+	t.Log("Pprof started in goroutine")
 
 	os.Setenv("PPROF_ENABLED", oldPprof)
 }
@@ -260,9 +260,9 @@ func TestInitDB(t *testing.T) {
 
 	err := initDB()
 	if err != nil {
-		t.Logf("✅ initDB correctly failed: %v", err)
+		t.Logf("initDB correctly failed: %v", err)
 	} else {
-		t.Error("❌ initDB should fail with wrong credentials")
+		t.Error("initDB should fail with wrong credentials")
 	}
 
 	os.Setenv("DB_PATH", oldPath)
@@ -278,9 +278,9 @@ func TestInitDBEmpty(t *testing.T) {
 
 	err := initDB()
 	if err != nil {
-		t.Logf("⚠️ initDB failed with empty path: %v", err)
+		t.Logf("initDB failed with empty path: %v", err)
 	} else {
-		t.Log("✅ initDB used default path")
+		t.Log("initDB used default path")
 	}
 
 	os.Setenv("DB_PATH", oldPath)
@@ -296,9 +296,9 @@ func TestInitDBDocker(t *testing.T) {
 
 	err := initDB()
 	if err != nil {
-		t.Logf("⚠️ initDB with Docker env failed: %v", err)
+		t.Logf("initDB with Docker env failed: %v", err)
 	} else {
-		t.Log("✅ initDB with Docker env succeeded")
+		t.Log("initDB with Docker env succeeded")
 	}
 
 	os.Setenv("DB_PATH", oldPath)
@@ -314,9 +314,9 @@ func TestInitDBWrongPassword(t *testing.T) {
 
 	err := initDB()
 	if err != nil {
-		t.Logf("✅ initDB failed with wrong password: %v", err)
+		t.Logf("initDB failed with wrong password: %v", err)
 	} else {
-		t.Error("❌ initDB should fail with wrong password")
+		t.Error("initDB should fail with wrong password")
 	}
 
 	os.Setenv("DB_PATH", oldPath)
@@ -332,9 +332,9 @@ func TestInitDBWithMock(t *testing.T) {
 
 	err := initDB()
 	if err != nil {
-		t.Logf("✅ initDB failed as expected: %v", err)
+		t.Logf("initDB failed as expected: %v", err)
 	} else {
-		t.Log("⚠️ initDB succeeded (unexpected)")
+		t.Log("initDB succeeded (unexpected)")
 	}
 
 	os.Setenv("DB_PATH", oldPath)
@@ -348,39 +348,39 @@ func TestInitDBWithMock(t *testing.T) {
 func TestRunMigrations(t *testing.T) {
 	err := runMigrations()
 	if err != nil {
-		t.Logf("⚠️ Migrations failed (expected without DB): %v", err)
+		t.Logf("Migrations failed (expected without DB): %v", err)
 	}
 }
 
 func TestApplyMigrations(t *testing.T) {
 	err := applyMigrations()
 	if err != nil {
-		t.Logf("⚠️ applyMigrations failed (expected without DB): %v", err)
+		t.Logf("applyMigrations failed (expected without DB): %v", err)
 	}
 }
 
 func TestApplyMigrationsError(t *testing.T) {
 	err := applyMigrations()
 	if err != nil {
-		t.Logf("✅ applyMigrations failed: %v", err)
+		t.Logf("applyMigrations failed: %v", err)
 	} else {
-		t.Log("⚠️ applyMigrations succeeded (unexpected)")
+		t.Log("applyMigrations succeeded (unexpected)")
 	}
 }
 
 func TestRollbackMigrations(t *testing.T) {
 	err := rollbackMigrations()
 	if err != nil {
-		t.Logf("⚠️ rollbackMigrations failed (expected without DB): %v", err)
+		t.Logf("rollbackMigrations failed (expected without DB): %v", err)
 	}
 }
 
 func TestRollbackMigrationsError(t *testing.T) {
 	err := rollbackMigrations()
 	if err != nil {
-		t.Logf("✅ rollbackMigrations failed: %v", err)
+		t.Logf("rollbackMigrations failed: %v", err)
 	} else {
-		t.Log("⚠️ rollbackMigrations succeeded (unexpected)")
+		t.Log("rollbackMigrations succeeded (unexpected)")
 	}
 }
 
@@ -393,16 +393,16 @@ func TestShouldRollback(t *testing.T) {
 
 	os.Args = []string{"cmd"}
 	if shouldRollback() {
-		t.Error("❌ shouldRollback() returned true without -down flag")
+		t.Error("shouldRollback() returned true without -down flag")
 	}
 
 	os.Args = []string{"cmd", "-down"}
 	if !shouldRollback() {
-		t.Error("❌ shouldRollback() returned false with -down flag")
+		t.Error("shouldRollback() returned false with -down flag")
 	}
 
 	os.Args = oldArgs
-	t.Log("✅ ShouldRollback works")
+	t.Log("ShouldRollback works")
 }
 
 func TestShouldRollbackWithArgs(t *testing.T) {
@@ -410,20 +410,20 @@ func TestShouldRollbackWithArgs(t *testing.T) {
 
 	os.Args = []string{"cmd"}
 	if shouldRollback() {
-		t.Error("❌ shouldRollback true without args")
+		t.Error("shouldRollback true without args")
 	}
 
 	os.Args = []string{"cmd", "-down"}
 	if !shouldRollback() {
-		t.Error("❌ shouldRollback false with -down")
+		t.Error("shouldRollback false with -down")
 	}
 
 	os.Args = []string{"cmd", "-up"}
 	if shouldRollback() {
-		t.Error("❌ shouldRollback true with -up")
+		t.Error("shouldRollback true with -up")
 	}
 
-	t.Log("✅ shouldRollback works with all args")
+	t.Log("shouldRollback works with all args")
 	os.Args = oldArgs
 }
 
@@ -438,7 +438,7 @@ func TestRun(t *testing.T) {
 	go func() {
 		err := run()
 		if err != nil {
-			t.Logf("⚠️ run() error: %v", err)
+			t.Logf("run() error: %v", err)
 		}
 		done <- true
 	}()
@@ -449,9 +449,9 @@ func TestRun(t *testing.T) {
 
 	select {
 	case <-done:
-		t.Log("✅ run() stopped gracefully")
+		t.Log("run() stopped gracefully")
 	case <-time.After(3 * time.Second):
-		t.Log("⚠️ run() timeout")
+		t.Log("run() timeout")
 	}
 	os.Args = oldArgs
 }
@@ -463,7 +463,7 @@ func TestRunServers(t *testing.T) {
 	go func() {
 		err := runServers(svc, authSvc)
 		if err != nil {
-			t.Logf("⚠️ runServers error: %v", err)
+			t.Logf("runServers error: %v", err)
 		}
 		done <- true
 	}()
@@ -474,9 +474,9 @@ func TestRunServers(t *testing.T) {
 
 	select {
 	case <-done:
-		t.Log("✅ runServers stopped gracefully")
+		t.Log("runServers stopped gracefully")
 	case <-time.After(5 * time.Second):
-		t.Log("⚠️ runServers timeout (this is OK in test)")
+		t.Log("runServers timeout (this is OK in test)")
 	}
 }
 
@@ -487,7 +487,7 @@ func TestRunServersWithMock(t *testing.T) {
 	go func() {
 		err := runServers(svc, authSvc)
 		if err != nil {
-			t.Logf("⚠️ runServers error: %v", err)
+			t.Logf("runServers error: %v", err)
 		}
 		done <- true
 	}()
@@ -498,8 +498,8 @@ func TestRunServersWithMock(t *testing.T) {
 
 	select {
 	case <-done:
-		t.Log("✅ runServers stopped gracefully")
+		t.Log("runServers stopped gracefully")
 	case <-time.After(3 * time.Second):
-		t.Log("⚠️ runServers timeout")
+		t.Log("runServers timeout")
 	}
 }

@@ -176,7 +176,34 @@ func CreateTestTable() error {
     logger.Debug("CreateTestTable: all tables created or already exists")
     return nil
 }
+// DropTestTable — удаляет тестовые таблицы, если они существуют
+func DropTestTable() error {
+    if db == nil {
+        return errors.New("database not initialized")
+    }
 
+    // Удаляем таблицы в обратном порядке (из-за зависимостей)
+    _, err := db.Exec("DROP TABLE IF EXISTS cache_control_user CASCADE")
+    if err != nil {
+        logger.Error("DropTestTable: failed to drop cache_control_user: %v", err)
+        return err
+    }
+
+    _, err = db.Exec("DROP TABLE IF EXISTS users CASCADE")
+    if err != nil {
+        logger.Error("DropTestTable: failed to drop users: %v", err)
+        return err
+    }
+
+    _, err = db.Exec("DROP TABLE IF EXISTS subscriptions CASCADE")
+    if err != nil {
+        logger.Error("DropTestTable: failed to drop subscriptions: %v", err)
+        return err
+    }
+
+    logger.Debug("DropTestTable: all tables dropped successfully")
+    return nil
+}
 // CleanTestTable очищает таблицу перед тестами
 func CleanTestTable() error {
     if db == nil {
