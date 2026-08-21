@@ -8,7 +8,7 @@ on:                                       # запуск по заливке к�
   push:              # Все пуши во все ветки
   pull_request:      # Все PR во все ветки
 env:                                              
-  DB_PATH: postgres://postgres:mysecret@postgres:5432/subscriptions?sslmode=disable
+  DB_PATH: postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable
   LOG_LEVEL: info
   ENV: docker
   LOG_PATH: /var/log/app/app.log
@@ -65,11 +65,15 @@ jobs:
           go-version: '1.23'    
       - name: Build                       # название
         run: go build -v ./...            # компиляция бинарника
+
+      - name: Install richgo
+        run: go install github.com/kyoh86/richgo@latest
+
       - name: Unit tests
-        run: go test -v -tags=unit -p 1 -count=1 ./... # запуск юнит тестов последовательно и без кэширования
+        run: richgo test -v -tags=unit -p 1 -count=1 ./... # запуск юнит тестов последовательно и без кэширования
 
       - name: Integration tests
-        run: go test -v -tags=integration -p 1 -count=1 ./... # запуск интеграционных тестов последовательно и без кэширования
+        run: richgo test -v -tags=integration -p 1 -count=1 ./... # запуск интеграционных тестов последовательно и без кэширования
            
   job2:
     name: publish                  # при добавлении тегов должен автоматически публиковать приложение в DockerHub.
