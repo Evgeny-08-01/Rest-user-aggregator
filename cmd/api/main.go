@@ -14,17 +14,25 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
+
+	pb "Rest-user-agregator/proto/subscription"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 
 	_ "Rest-user-agregator/docs"
 	"Rest-user-agregator/internal/authentication"
 	"Rest-user-agregator/internal/cache"
 	"Rest-user-agregator/internal/database"
-	"Rest-user-agregator/internal/handlers"
+	"Rest-user-agregator/internal/handlers/grpc"
+	handlers "Rest-user-agregator/internal/handlers/rest"
 	"Rest-user-agregator/internal/middleware"
 	"Rest-user-agregator/internal/service"
 	"Rest-user-agregator/pkg/logger"
+	"net"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -46,59 +54,68 @@ func main() {
 }
 
 // ============================================================
-// 3. ОСНОВНАЯ ЛОГИКА (СБОРКА И ЗАПУСК)
+// 3. ОСНОВНАЯ ЛОГИКА ПРОЕКТА
 // ============================================================
-// Структура проекта
 //
-//	 func run() error {
-//	 1. .env
-//	 2. Логгер
-//   3. Редис
-//	 4. БД
-//	 5. Миграции
-//	 6. Сервер
-//	   return nil
-//	}
+// Структура с выносом всей логики в отдельные функции:
+//
+//   func run() error {
+//     1. .env
+//     2. Логгер
+//     3. Redis (кеш — опционально)
+//     4. БД (PostgreSQL — критично)
+//     5. Миграции
+//     6. Создание зависимостей (repo, services) — общие для REST и gRPC
+//     7. Запуск приложения (startApplication)
+//        - ПАРАЛЛЕЛЬНЫЙ ЗАПУСК (REST + gRPC в горутинах с WaitGroup)
+//        - Ожидание сигналов остановки (SIGINT, SIGTERM)
+//        - Graceful shutdown (оба сервера с таймаутом)
+//        - Ожидание завершения всех горутин (WaitGroup)
+//     return nil
+//   }
 func run() error {
-	// 1. Загружаем .env
-	loadEnv()
-	// 2. Инициализация моего Логгера
-	initLogger()
-    // 3. Redis
+    // 1. Загружаем .env (ошибки внутри)
+    loadEnv()
+
+    // 2. Инициализация логгера (ошибки внутри)
+    initLogger()
+    logger.Info("Starting Subscription API server")
+
+	// 3. Инициализация логгера (ошибки внутри)
+	initPprof()
+
+    // 4. Redis (не критичен)
     if err := initRedis(); err != nil {
         logger.Warn("Redis unavailable, continuing without cache: %v", err)
-        // НЕ возвращаем ошибку — сервер работает без кеша
     }
-	// 4. Инициализация БД
-	if err := initDB(); err != nil {
-		return fmt.Errorf("DB init: %w", err)
-	}
-	
-defer func() {
-    if err := database.Close(); err != nil {
-        logger.Error("failed to close db: %v", err)
+
+    // 5. Инициализация БД (критична)
+    if err := initDB(); err != nil {
+        return fmt.Errorf("DB init: %w", err)
     }
-}()
-	
+    defer func() {
+        if err := database.Close(); err != nil {
+            logger.Error("failed to close db: %v", err)
+        }
+    }()
 
-	// 5. Миграции
-	if err := runMigrations(); err != nil {
-		return fmt.Errorf("migrations: %w", err)
-	}
+    // 6. Миграции
+    if err := runMigrations(); err != nil {
+        return fmt.Errorf("migrations: %w", err)
+    }
 
-	// 6. Сервер
-	if err := startServer(); err != nil {
-		return fmt.Errorf("server: %w", err)
-	}
+    // 7. Создание зависимостей
+    svc, authSvc := buildServices()
 
-	return nil
+    // 8. Запуск серверов
+    return runServers(svc, authSvc)
 }
 
 // ============================================================
-// 4. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (каждая делает что то одно)
+// 4.  ФУНКЦИИ 
 // ============================================================
 
-// 4.1 Загрузка .env
+// 1. Загрузка .env
 func loadEnv() {
 	if err := godotenv.Load(".env"); err != nil {
 		log.Println("[WARN] .env file not found, using default values")
@@ -108,7 +125,7 @@ func loadEnv() {
 	}
 }
 
-// 4.2 Инициализация моего логгера(читаем уровень из .env)
+// 2. Инициализация моего логгера(читаем уровень из .env)
 func initLogger() {
 	logLevel := os.Getenv("LOG_LEVEL") // читает переменную окружения LOG_LEVEL
 	logPath := os.Getenv("LOG_PATH")   // читает переменную окружения LOG_PATH
@@ -130,7 +147,93 @@ func initLogger() {
 
 }
 
-// 4.3 Подключение к БД
+// 3. initPprof — ЗАПУСК PROFILER ПРИ НЕОБХОДИМОСТИ
+func initPprof() {
+    if os.Getenv("PPROF_ENABLED") != "true" {
+        return
+    }
+    go func() {
+        logger.Info("pprof server starting on localhost:6060")
+        if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+            log.Printf("pprof server error: %v", err)
+        }
+    }()
+}
+
+
+// 4. Подключение к БД REDIS (можем работать и без кэша, но медленно, особенно для total cost хэндлера)
+func initRedis() error {
+    // ============================================================
+    // 1. ЧИТАЕМ АДРЕС REDIS ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ
+    // ============================================================
+    // redisAddr — адрес Redis в формате "хост:порт"
+    // Примеры:
+    //   - "localhost:6379" — для локальной разработки (без Docker)
+    //   - "redis:6379"     — для запуска в Docker (сервис называется "redis")
+    //
+    // Переменная задаётся в .env файле:
+    //   REDIS_ADDR=redis:6379
+    // ============================================================
+    redisAddr := os.Getenv("REDIS_ADDR")
+
+    // Если переменная не задана — используем значение по умолчанию
+    // localhost:6379 — стандартный адрес для Redis при локальной установке
+    if redisAddr == "" {
+        redisAddr = "localhost:6379"
+        // Логируем предупреждение, что используем значение по умолчанию
+        // Это не ошибка, просто напоминание для разработчика
+        logger.Warn("REDIS_ADDR not set, using default: %s", redisAddr)
+    } else {
+        // Если переменная задана — логируем, что используем её
+        logger.Debug("REDIS_ADDR: %s", redisAddr)
+    }
+
+    // ============================================================
+    // 2. ПЫТАЕМСЯ ПОДКЛЮЧИТЬСЯ К REDIS
+    // ============================================================
+    // Вызываем функцию InitRedis из пакета cache.
+    // Параметры:
+    //   - redisAddr: адрес Redis (хост:порт)
+    //   - ""        : пароль (у нас нет пароля, оставляем пустым)
+    //   - 0         : номер базы данных (по умолчанию 0)
+    //
+    // InitRedis внутри себя:
+    //   1. Создаёт клиент Redis
+    //   2. Отправляет PING для проверки подключения
+    //   3. Если PING успешен — возвращает nil (успех)
+    //   4. Если нет — возвращает ошибку
+    // ============================================================
+    if err := cache.InitRedis(redisAddr, "", 0); err != nil {
+        // ============================================================
+        // 3. ОБРАБОТКА ОШИБКИ ПОДКЛЮЧЕНИЯ
+        // ============================================================
+        // Если Redis недоступен — мы НЕ останавливаем сервер.
+        // Почему:
+        //   - Кеш — это оптимизация, а не критическая часть
+        //   - Без кеша сервер всё ещё работает (но медленнее)
+        //   - Пользователь не должен видеть ошибку из-за того, что Redis упал
+        //
+        // Что делаем:
+        //   - Логируем предупреждение, что работаем без кеша
+        //   - Возвращаем ошибку в run(), но там она обрабатывается как WARN
+        // ============================================================
+
+        logger.Warn("Redis unavailable, continuing without cache")
+        return err
+    }
+
+    // ============================================================
+    // 4. УСПЕШНОЕ ПОДКЛЮЧЕНИЕ
+    // ============================================================
+    // Если подключение успешно — логируем успех.
+    // После этой строки кеш готов к использованию.
+    // ============================================================
+    logger.Info("Redis initialized successfully on %s", redisAddr)
+    return nil
+}
+
+
+// 5. Подключение к БД PostgreSQL
 func initDB() error {
 	databasePath := os.Getenv("DB_PATH") // Получаем путь к БД ИЗ .env
 	if databasePath == "" {
@@ -158,7 +261,7 @@ func initDB() error {
 	return nil
 }
 
-// 4.4 Миграции
+// 6. Миграции
 func runMigrations() error {
 	if shouldRollback() {
 		return rollbackMigrations()
@@ -166,23 +269,115 @@ func runMigrations() error {
 	return applyMigrations()
 }
 
-// 4.5 Запуск сервера
-func startServer() error {
-	// ============================================================
-	// 3. Инициализация БД (УЖЕ БЫЛО)
-	// ============================================================
-	repo := database.NewPostgresRepo() // экземпляр репозитория, содержащий пул соединений и указатель на БД,
-	// содержит методы работы с БД. NewPostgresRepo-конструктор над PostgresRepo
-	// PostgresRepo- структура и содежит поле: db *sql.DB
+// 7. buildServices — СОЗДАЁТ ВСЕ ЗАВИСИМОСТИ
+// ============================================================
+func buildServices() (*service.SubscriptionService, *service.AuthService) {
+    repo := database.NewPostgresRepo()
+    svc := service.NewSubscriptionService(repo)
+    authService := service.NewAuthService(repo)
+    return svc, authService
+}
 
-	// ============================================================
-	// 3.1 СОЗДАНИЕ СЕРВИСОВ
-	// ============================================================
-	svc := service.NewSubscriptionService(repo) // Сервис для работы с подписками (CRUD и total-cost)
-	authService := service.NewAuthService(repo) // НОВЫЙ СЕРВИС: Сервис для авторизации (регистрация, логин, JWT)
 
-	// ============================================================
-	// 4. ИНИЦИАЛИЗАЦИЯ ХЭНДЛЕРА
+
+// 8. runServers — ЗАПУСК И УПРАВЛЕНИЕ ЖИЗНЕННЫМ ЦИКЛОМ СЕРВЕРОВ
+// ============================================================
+// 1. Создаёт REST и gRPC серверы
+// 2. Запускает их параллельно (WaitGroup)
+// 3. Ожидает сигнал остановки (SIGINT/SIGTERM)
+// 4. Graceful shutdown (30 секунд)
+// ============================================================
+// Вызывается из run() после создания всех зависимостей.
+// Создаёт REST и gRPC серверы, запускает их параллельно,
+// ожидает сигнал остановки и выполняет graceful shutdown.
+// ============================================================
+
+func runServers(svc *service.SubscriptionService, authService *service.AuthService) error {
+    // 1. СОЗДАНИЕ СЕРВЕРОВ
+    restServer := createRESTServer(svc, authService) // настройка REST сервера
+    grpcServer, lis,err := createGRPCServer(svc)         // настройка GRPC сервер
+  if err != nil{
+	return fmt.Errorf("failed to start gPRC server: %w", err)
+	}
+
+    // 2. ПАРАЛЛЕЛЬНЫЙ ЗАПУСК
+    var wg sync.WaitGroup          // Счётчик горутин
+    chErr := make(chan error, 2)  // Канал для ошибок от серверов
+
+    // Запуск REST API в горутине
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        logger.Info("REST API server starting...")
+        // ListenAndServe блокирует выполнение, пока сервер не остановится
+        if err := restServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            chErr <- fmt.Errorf("REST API: %w", err)
+        }
+    }()
+
+    // Запуск gRPC API в горутине
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        logger.Info("gRPC API server starting...")
+        // Serve блокирует выполнение, пока сервер не остановится
+        if err := grpcServer.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+            chErr <- fmt.Errorf("gRPC API: %w", err)
+        }
+    }()
+
+    // 3. ОЖИДАНИЕ СИГНАЛА ОСТАНОВКИ
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+    // Блокируем выполнение, пока не придёт сигнал или ошибка
+    select {
+    case <-quit:
+        logger.Info("Shutdown signal received")
+    case err := <-chErr:
+        logger.Error("Server error: %v", err)
+    }
+
+    // 4. GRACEFUL SHUTDOWN (30 секунд на завершение)
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+
+    // Остановка REST — не принимает новые запросы, ждёт завершения текущих
+   logger.Info("Stopping REST API...")
+if err := restServer.Shutdown(ctx); err != nil {
+    logger.Error("REST shutdown error: %v", err)
+} else {
+    logger.Info("REST API stopped gracefully") 
+}
+
+    // Остановка gRPC — ждёт завершения текущих RPC-вызовов
+    logger.Info("Stopping gRPC API...")
+    done := make(chan struct{})
+    go func() {
+        grpcServer.GracefulStop() // Блокирует выполнение, ждёт завершения всех RPC
+        close(done)
+    }()
+
+    // Если gRPC не завершился за 30 секунд — принудительно останавливаем
+    select {
+    case <-done:
+        logger.Info("gRPC stopped gracefully")
+    case <-ctx.Done():
+        logger.Warn("gRPC timeout, forcing stop")
+        grpcServer.Stop()
+    }
+
+    // 5. ЖДЁМ ЗАВЕРШЕНИЯ ВСЕХ ГОРУТИН
+    wg.Wait()
+    logger.Info("All servers stopped")
+
+    return nil
+}
+
+//   Запуск сервера REST API
+func createRESTServer(svc *service.SubscriptionService, authService *service.AuthService) *http.Server {
+
+	// 1. ИНИЦИАЛИЗАЦИЯ ХЭНДЛЕРА
 	// ============================================================
 	// Раньше хэндлер принимал только сервис подписок.
 	// Теперь передаём оба сервиса: для подписок и для авторизации.
@@ -194,14 +389,7 @@ func startServer() error {
 	// !!!! Таким образом handler содержит методы обработки запросов и подключение к БД
 
 	mux := http.NewServeMux() // Создаем роутер-switch для URL
-// ============================================================
-// ВРЕМЕННО ДЛЯ PPROF
-// ============================================================
-go func() {
-    if err := http.ListenAndServe(":6060", nil); err != nil {
-        log.Printf("pprof server error: %v", err)
-    }
-}()
+
 // ============================================================
     mux.Handle("/metrics", promhttp.Handler())
 	// ============================================================
@@ -343,63 +531,46 @@ mux.HandleFunc("GET /health", middleware.MetricsMiddleware(
 		WriteTimeout: 10 * time.Second, // максимальное время на запись ответа — защита от зависших хендлеров
 		IdleTimeout:  15 * time.Second, // максимальное время жизни keep-alive соединения без новых запросов
 	}
-// ============================================================
-//  КАНАЛ ДЛЯ ОШИБОК ОТ СЕРВЕРА
-// ============================================================
-// Буфер 1 — чтобы ошибка не потерялась, если main ещё не читает
-    serverErrors := make(chan error, 1)
-
-// ============================================================
-//  ЗАПУСК СЕРВЕРА В ГОРУТИНЕ
-// ============================================================
-    go func() {
-        logger.Info("Server starting on port %s", port)
-
-        // ListenAndServe — БЛОКИРУЮЩИЙ вызов
-        // http.ErrServerClosed — НЕ ошибка, а нормальное завершение
-        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-            logger.Error("Server failed: %v", err)
-            serverErrors <- err // ← отправляем ошибку в канал
-        }
-        // если err == nil или http.ErrServerClosed — горутина завершается без ошибки
-    }()		
-// ============================================================
-//  КАНАЛ ДЛЯ СИГНАЛОВ ОСТАНОВКИ
-// ============================================================
-    quit := make(chan os.Signal, 1)
-    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-// ============================================================
-//  ОЖИДАНИЕ СИГНАЛА ИЛИ ОШИБКИ
-// ============================================================
-    select {
-    case <-quit:
-        logger.Info("Shutting down server...") // Ctrl+C или Docker stop
-    case err := <-serverErrors:
-        logger.Error("Server error: %v", err) // сервер упал
-        // НЕ ВЫХОДИМ! продолжаем graceful shutdown
-    }
-// ============================================================
-//  GRACEFUL SHUTDOWN
-// ============================================================
-    ctx, cancel := context.WithTimeout(context.Background(), 11*time.Second)
-    defer cancel()
-
-// ============================================================
-//  ОСТАНОВКА СЕРВЕРА
-// ============================================================
-    if err := srv.Shutdown(ctx); err != nil {
-        logger.Error("Server forced to shutdown: %v", err)
-        return err // ← ВОЗВРАЩАЕМ ОШИБКУ в run(), НЕ os.Exit(1)!
-    }
-
-// ============================================================
-//  УСПЕШНОЕ ЗАВЕРШЕНИЕ
-// ============================================================
-    logger.Info("Server exited properly")
-    return nil // ← nil — всё хорошо
+		
+return srv
 }
 
+
+// createGRPCServer — СОЗДАЁТ gRPC СЕРВЕР (без запуска)
+// ============================================================
+// Принимает сервис, создаёт gRPC-обработчик, регистрирует его
+// и возвращает готовый gRPC сервер и слушатель (listener).
+// Порт читается из .env (GRPC_PORT), по умолчанию 50051.
+// ============================================================
+func createGRPCServer(svc *service.SubscriptionService) (*grpc.Server, net.Listener,error) {
+    // 1. ПОРТ ИЗ .env
+    grpcPort := os.Getenv("GRPC_PORT")
+    if grpcPort == "" {
+        grpcPort = "50051"
+        logger.Warn("GRPC_PORT not set, using default: %s", grpcPort)
+    }
+
+    // 2. СОЗДАНИЕ gRPC-ОБРАБОТЧИКА
+    grpcHandler := grpcserver.NewSubscriptionServer(svc)
+
+    // 3. СОЗДАНИЕ gRPC-СЕРВЕРА
+    grpcServer := grpc.NewServer()
+
+    // 4. РЕГИСТРАЦИЯ СЕРВИСА
+    pb.RegisterSubscriptionServiceServer(grpcServer, grpcHandler)
+if os.Getenv("ENV") != "production" {
+        reflection.Register(grpcServer)
+    }
+    // 5. СОЗДАНИЕ СЛУШАТЕЛЯ (listener)
+    lis, err := net.Listen("tcp", ":"+grpcPort)
+    if err != nil {
+        logger.Error("gRPC listen failed on port %s: %v", grpcPort, err)
+        return nil, nil, err}
+    
+
+    logger.Info("gRPC server created on port %s", grpcPort)
+    return grpcServer, lis, err
+}
 
 func shouldRollback() bool {
 	return len(os.Args) > 1 && os.Args[1] == "-down"
@@ -417,91 +588,9 @@ func applyMigrations() error {
 	}
 	return nil
 }
-// ============================================================
-// initRedis — инициализация подключения к Redis (кеш)
-// ============================================================
-// Назначение: создаёт подключение к Redis для кеширования результатов.
-// Redis используется для хранения результатов тяжёлых запросов
-// (например, total-cost), чтобы не нагружать БД.
-//
-// ПОЧЕМУ REDIS НЕ КРИТИЧЕН:
-//   - Если Redis недоступен — сервер продолжает работать
-//   - Кеш — это оптимизация, а не обязательная часть
-//   - Без кеша запросы будут медленнее, но корректными
-//
-// КОГДА ВЫЗЫВАЕТСЯ:
-//   - При старте сервера (в функции run())
-//   - После инициализации БД, до запуска HTTP-сервера
-//
-// ВОЗВРАЩАЕТ:
-//   - error: ошибка, если не удалось подключиться
-// ============================================================
-func initRedis() error {
-    // ============================================================
-    // 1. ЧИТАЕМ АДРЕС REDIS ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ
-    // ============================================================
-    // redisAddr — адрес Redis в формате "хост:порт"
-    // Примеры:
-    //   - "localhost:6379" — для локальной разработки (без Docker)
-    //   - "redis:6379"     — для запуска в Docker (сервис называется "redis")
-    //
-    // Переменная задаётся в .env файле:
-    //   REDIS_ADDR=redis:6379
-    // ============================================================
-    redisAddr := os.Getenv("REDIS_ADDR")
 
-    // Если переменная не задана — используем значение по умолчанию
-    // localhost:6379 — стандартный адрес для Redis при локальной установке
-    if redisAddr == "" {
-        redisAddr = "localhost:6379"
-        // Логируем предупреждение, что используем значение по умолчанию
-        // Это не ошибка, просто напоминание для разработчика
-        logger.Warn("REDIS_ADDR not set, using default: %s", redisAddr)
-    } else {
-        // Если переменная задана — логируем, что используем её
-        logger.Debug("REDIS_ADDR: %s", redisAddr)
-    }
 
-    // ============================================================
-    // 2. ПЫТАЕМСЯ ПОДКЛЮЧИТЬСЯ К REDIS
-    // ============================================================
-    // Вызываем функцию InitRedis из пакета cache.
-    // Параметры:
-    //   - redisAddr: адрес Redis (хост:порт)
-    //   - ""        : пароль (у нас нет пароля, оставляем пустым)
-    //   - 0         : номер базы данных (по умолчанию 0)
-    //
-    // InitRedis внутри себя:
-    //   1. Создаёт клиент Redis
-    //   2. Отправляет PING для проверки подключения
-    //   3. Если PING успешен — возвращает nil (успех)
-    //   4. Если нет — возвращает ошибку
-    // ============================================================
-    if err := cache.InitRedis(redisAddr, "", 0); err != nil {
-        // ============================================================
-        // 3. ОБРАБОТКА ОШИБКИ ПОДКЛЮЧЕНИЯ
-        // ============================================================
-        // Если Redis недоступен — мы НЕ останавливаем сервер.
-        // Почему:
-        //   - Кеш — это оптимизация, а не критическая часть
-        //   - Без кеша сервер всё ещё работает (но медленнее)
-        //   - Пользователь не должен видеть ошибку из-за того, что Redis упал
-        //
-        // Что делаем:
-        //   - Логируем предупреждение, что работаем без кеша
-        //   - Возвращаем ошибку в run(), но там она обрабатывается как WARN
-        // ============================================================
 
-        logger.Warn("Redis unavailable, continuing without cache")
-        return err
-    }
 
-    // ============================================================
-    // 4. УСПЕШНОЕ ПОДКЛЮЧЕНИЕ
-    // ============================================================
-    // Если подключение успешно — логируем успех.
-    // После этой строки кеш готов к использованию.
-    // ============================================================
-    logger.Info("Redis initialized successfully on %s", redisAddr)
-    return nil
-}
+
+

@@ -40,7 +40,7 @@ test-u: ## Run unit tests (with mocks, no database)
 	@echo "========================================="
 	@echo "  RUNNING UNIT TESTS (tag: unit)"
 	@echo "========================================="
-	go test ./internal/handlers -tags=unit -v
+	go test ./cmd/api -tags=unit -v   #
 
 .PHONY: test-int
 test-int: ## Run integration tests (with real DB via Docker)

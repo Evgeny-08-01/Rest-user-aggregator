@@ -66,9 +66,9 @@ func (s *AuthService) Register(ctx context.Context, email, password, role string
 		logger.Warn("AuthService.Register: password is required")
 		return errors.New("password is required")
 	}
-	if len(password) < 4 {
+	if len(password) < 6 {
 		logger.Warn("AuthService.Register: password too short: %d chars", len(password))
-		return errors.New("password must be at least 4 characters.")
+		return errors.New("password must be at least 6 characters")
 	}
 
 	// 2. Проверяем, существует ли пользователь с таким email

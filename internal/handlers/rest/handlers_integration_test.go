@@ -44,19 +44,23 @@ func TestMain(m *testing.M) {
 	// 1. ЗАГРУЖАЕМ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
 	//    Файл .env.test лежит в корне проекта (на два уровня выше)
 	//    Если файл не найден — тесты пропускаются (но не падают)
-	if err := godotenv.Load("../../.env.test"); err != nil {
+	if err := godotenv.Load("../../../.env.test"); err != nil {
     log.Println("WARNING: .env.test not found, using env vars")
 }
 	log.Println("LOG_LEVEL from env.test:", os.Getenv("LOG_LEVEL"))
 	logger.Init(os.Getenv("LOG_PATH"), os.Getenv("LOG_LEVEL"))
 	
-	// 2. ПОЛУЧАЕМ СТРОКУ ПОДКЛЮЧЕНИЯ К БД
 	//    Берём из переменной окружения DB_PATH
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		// Если не задана — используем стандартную для локальной разработки
-		dbPath = "postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable"
-	}
+	// 2. ПОЛУЧАЕМ СТРОКУ ПОДКЛЮЧЕНИЯ К БД
+//    Берём из переменной окружения DB_PATH
+dbPath := os.Getenv("DB_PATH")
+if dbPath == "" {
+    // Если не задана — используем стандартную для локальной разработки
+    dbPath = "postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable"
+    log.Println("WARNING: DB_PATH not set, using default")
+} else {
+    log.Println("INFO: Using DB_PATH from .env")
+}
 
 	// 3. ПОДКЛЮЧАЕМСЯ К БАЗЕ ДАННЫХ
 	err := database.Init(dbPath)

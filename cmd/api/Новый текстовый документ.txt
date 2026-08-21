@@ -1,0 +1,178 @@
+"package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "net"
+    "net/http"
+    "os"
+    "os/signal"
+    "sync"
+    "syscall"
+    "time"
+
+    "google.golang.org/grpc"
+    // ... ваши импорты
+)
+
+func run() error {
+    // ============================================================
+    // 1. ИНИЦИАЛИЗАЦИЯ (все общие зависимости)
+    // ============================================================
+    loadEnv()
+    initLogger()
+    if err := initRedis(); err != nil {
+        logger.Warn("Redis unavailable: %v", err)
+    }
+    if err := initDB(); err != nil {
+        return fmt.Errorf("DB init: %w", err)
+    }
+    defer database.Close()
+    
+    if err := runMigrations(); err != nil {
+        return fmt.Errorf("migrations: %w", err)
+    }
+
+    // ============================================================
+    // 2. СОЗДАНИЕ ОБЩИХ ЗАВИСИМОСТЕЙ (репозиторий, сервисы)
+    // ============================================================
+    repo := database.NewPostgresRepo()
+    svc := service.NewSubscriptionService(repo)
+    authService := service.NewAuthService(repo)
+
+    // ============================================================
+    // 3. СОЗДАНИЕ И КОНФИГУРАЦИЯ СЕРВЕРОВ
+    // ============================================================
+    
+    // REST API сервер
+    restHandler := handlers.NewHandler(svc, authService)
+    restServer := newRESTServer(restHandler)
+    
+    // gRPC API сервер
+    grpcHandler := grpcserver.NewSubscriptionServer(svc)
+    grpcServer := newGRPCServer(grpcHandler)
+
+    // ============================================================
+    // 4. ЗАПУСК СЕРВЕРОВ ПАРАЛЛЕЛЬНО
+    // ============================================================
+    
+    var wg sync.WaitGroup
+    errors := make(chan error, 2) // буфер для ошибок серверов
+    
+    // Запуск REST API сервера
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        logger.Info("Starting REST API server on port %s", os.Getenv("SERVER_PORT"))
+        if err := restServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+            errors <- fmt.Errorf("REST API server: %w", err)
+        }
+    }()
+    
+    // Запуск gRPC API сервера
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        logger.Info("Starting gRPC API server on port 50051")
+        if err := grpcServer.Serve(); err != nil && err != grpc.ErrServerStopped {
+            errors <- fmt.Errorf("gRPC API server: %w", err)
+        }
+    }()
+
+    // ============================================================
+    // 5. ОЖИДАНИЕ СИГНАЛОВ ОСТАНОВКИ
+    // ============================================================
+    
+    quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    
+    select {
+    case <-quit:
+        logger.Info("Shutdown signal received, stopping servers...")
+    case err := <-errors:
+        logger.Error("Server error: %v", err)
+        // Продолжаем graceful shutdown
+    }
+
+    // ============================================================
+    // 6. GRACEFUL SHUTDOWN
+    // ============================================================
+    
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+    
+    // Останавливаем REST API сервер
+    if err := restServer.Shutdown(shutdownCtx); err != nil {
+        logger.Error("REST API server shutdown error: %v", err)
+    }
+    
+    // Останавливаем gRPC API сервер
+    grpcServer.GracefulStop() // блокирующий вызов
+    
+    // Ждём завершения всех горутин
+    done := make(chan struct{})
+    go func() {
+        wg.Wait()
+        close(done)
+    }()
+    
+    select {
+    case <-done:
+        logger.Info("All servers stopped gracefully")
+        return nil
+    case <-shutdownCtx.Done():
+        logger.Warn("Shutdown timeout, forcing exit")
+        return fmt.Errorf("shutdown timeout")
+    }
+}
+
+// ============================================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ СОЗДАНИЯ СЕРВЕРОВ
+// ============================================================
+
+// newRESTServer — создаёт и конфигурирует REST API сервер
+func newRESTServer(handler *handlers.Handler) *http.Server {
+    mux := http.NewServeMux()
+    
+    // Настройка маршрутов (ваш существующий код)
+    // ...
+    
+    port := os.Getenv("SERVER_PORT")
+    if port == "" {
+        port = "8087"
+    }
+    
+    return &http.Server{
+        Addr:         ":" + port,
+        Handler:      mux,
+        ReadTimeout:  5 * time.Second,
+        WriteTimeout: 10 * time.Second,
+        IdleTimeout:  15 * time.Second,
+    }
+}
+
+// newGRPCServer — создаёт и конфигурирует gRPC API сервер
+func newGRPCServer(handler *grpcserver.SubscriptionServer) *grpc.Server {
+    // Здесь можно добавить интерцепторы, авторизацию, логирование
+    grpcServer := grpc.NewServer(
+        grpc.ChainUnaryInterceptor(
+            // loggingInterceptor,
+            // authInterceptor,
+        ),
+    )
+    
+    pb.RegisterSubscriptionServiceServer(grpcServer, handler)
+    return grpcServer
+}
+
+// Serve — запускает gRPC сервер на порту 50051
+func (s *grpc.Server) Serve() error {
+    lis, err := net.Listen("tcp", ":50051")
+    if err != nil {
+        return fmt.Errorf("failed to listen: %w", err)
+    }
+    
+    // ВАЖНО: сохраняем listener для graceful shutdown
+    return s.Serve(lis)
+}

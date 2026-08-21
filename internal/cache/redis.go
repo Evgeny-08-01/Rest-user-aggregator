@@ -11,6 +11,7 @@
 // Delete()	             Удаляет из Redis
 // DeleteByPattern()	 Удаляет по шаблону
 // GetClient()	         Возвращает клиент Redis для тестов
+// ============================================================
 package cache
 
 import (
@@ -32,7 +33,7 @@ import (
 var client *redis.Client
 
 // ============================================================
-// 2. ИНИЦИАЛИЗАЦИЯ ПОДКЛЮЧЕНИЯ К REDIS	
+// 2. ИНИЦИАЛИЗАЦИЯ ПОДКЛЮЧЕНИЯ К REDIS
 // ============================================================
 // InitRedis — создаёт подключение к Redis и проверяет его работоспособность.
 //
@@ -48,8 +49,9 @@ var client *redis.Client
 //   - При старте сервера (в main.go)
 // ============================================================
 var enabled bool
+
 func InitRedis(addr, password string, db int) error {
-	
+
 	// 1. СОЗДАЁМ КЛИЕНТ REDIS
 	//    redis.NewClient — создаёт структуру с настройками.
 	//    Физическое подключение откроется при первом запросе (Ping).
@@ -73,10 +75,9 @@ func InitRedis(addr, password string, db int) error {
 	}
 
 	// 3. ЛОГИРУЕМ УСПЕХ
-
-	enabled = true	
+	enabled = true
 	logger.Info("Redis connected successfully: %s", addr)
-    return nil
+	return nil
 }
 
 // ============================================================
@@ -97,15 +98,15 @@ func InitRedis(addr, password string, db int) error {
 //   - redis.Nil — специальная ошибка, означающая "ключ не найден"
 // ============================================================
 func Get(ctx context.Context, key string) (int, error) {
-	  if !enabled || client == nil {
-    logger.Debug("Cache disabled or client not initialized, skipping operation")
-    return 0, nil
-}
+	if !enabled || client == nil {
+		logger.Debug("Cache disabled or client not initialized, skipping operation")
+		return 0, nil
+	}
 	// client.Get — выполняет команду GET в Redis.
 	// .Int() — преобразует ответ в int.
 	// Если ключа нет — возвращает ошибку redis.Nil.
 	val, err := client.Get(ctx, key).Int()
-	
+
 	// Проверяем: если ключ не найден — возвращаем 0, без ошибки
 	if err == redis.Nil {
 		return 0, nil
@@ -132,10 +133,10 @@ func Get(ctx context.Context, key string) (int, error) {
 //   - После тяжёлого запроса к БД, чтобы закешировать результат
 // ============================================================
 func Set(ctx context.Context, key string, value int, ttl time.Duration) error {
-if !enabled || client == nil {
-    logger.Debug("Cache disabled or client not initialized, skipping operation")
-    return nil
-}
+	if !enabled || client == nil {
+		logger.Debug("Cache disabled or client not initialized, skipping operation")
+		return nil
+	}
 	// client.Set — выполняет команду SET в Redis.
 	// Сохраняет ключ → значение с автоматическим удалением через ttl.
 	return client.Set(ctx, key, value, ttl).Err()
@@ -157,6 +158,10 @@ if !enabled || client == nil {
 //   - Когда нужно удалить конкретный кеш (например, при обновлении подписки)
 // ============================================================
 func Delete(ctx context.Context, key string) error {
+	if !enabled || client == nil {
+		logger.Debug("Cache disabled or client not initialized, skipping operation")
+		return nil
+	}
 	return client.Del(ctx, key).Err()
 }
 
@@ -176,21 +181,21 @@ func Delete(ctx context.Context, key string) error {
 //   - Когда пользователь обновил подписку — нужно удалить все его кеши
 // ============================================================
 func DeleteByPattern(ctx context.Context, pattern string) error {
-	// client.Scan — ищет ключи по шаблону без блокировки Redis.
-	// Итератор проходит по всем ключам, соответствующим pattern.
+	if !enabled || client == nil {
+		logger.Debug("Cache disabled or client not initialized, skipping operation")
+		return nil
+	}
 	iter := client.Scan(ctx, 0, pattern, 0).Iterator()
-	
-	// Проходим по всем найденным ключам
+
 	for iter.Next(ctx) {
-		// Удаляем каждый ключ по очереди
 		if err := client.Del(ctx, iter.Val()).Err(); err != nil {
 			return err
 		}
 	}
-	
-	// Проверяем ошибки итерации
+
 	return iter.Err()
 }
+
 // ============================================================
 // 7. ПОЛУЧЕНИЕ КЛИЕНТА REDIS ДЛЯ ТЕСТОВ
 // ============================================================
@@ -198,5 +203,54 @@ func DeleteByPattern(ctx context.Context, pattern string) error {
 // Используется в интеграционных тестах для проверки ключей.
 // ============================================================
 func GetClient() *redis.Client {
-    return client
+	return client
+}
+// ============================================================
+// 8. СТРУКТУРА RedisCache — РЕАЛИЗАЦИЯ ИНТЕРФЕЙСА Cache
+// ============================================================
+type RedisCache struct {
+	client *redis.Client
+}
+
+// NewRedisCache — конструктор RedisCache
+func NewRedisCache() *RedisCache {
+	return &RedisCache{
+		client: client,
+	}
+}
+
+// Get — реализация интерфейса Cache
+func (r *RedisCache) Get(ctx context.Context, key string) (int, error) {
+	if r.client == nil {
+		return 0, nil
+	}
+	val, err := r.client.Get(ctx, key).Int()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	return val, err
+}
+
+// Set — реализация интерфейса Cache
+func (r *RedisCache) Set(ctx context.Context, key string, value int, ttl time.Duration) error {
+	if r.client == nil {
+		return nil
+	}
+	return r.client.Set(ctx, key, value, ttl).Err()
+}
+
+// Delete — реализация интерфейса Cache
+func (r *RedisCache) Delete(ctx context.Context, key string) error {
+	if r.client == nil {
+		return nil
+	}
+	return r.client.Del(ctx, key).Err()
+}
+
+// Keys — реализация интерфейса Cache
+func (r *RedisCache) Keys(ctx context.Context, pattern string) ([]string, error) {
+	if r.client == nil {
+		return []string{}, nil
+	}
+	return r.client.Keys(ctx, pattern).Result()
 }

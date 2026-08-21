@@ -1,0 +1,132 @@
+// ============================================================
+// 1. ВЕРСИЯ ПРОТОКОЛА
+// ============================================================
+// proto3 — текущая стабильная версия, используется везде.
+// proto2 — старая, не используй.
+syntax = "proto3";
+
+// ============================================================
+// 2. ПАКЕТ (пространство имён)
+// ============================================================
+// Нужен, чтобы избежать конфликтов, если будет несколько .proto-файлов.
+// Обычно совпадает с названием сервиса.
+package subscription;
+
+// ============================================================
+// 3. ОПЦИЯ go_package
+// ============================================================
+// Указывает, в какой пакет Go сгенерировать код.
+// Путь считается от корня проекта (где лежит go.mod).
+option go_package = "proto/subscription";
+
+// 5.1. Пустой запрос / ответ.
+// Используется, когда ничего передавать не нужно.
+message Empty {}
+// ============================================================
+// 4. СЕРВИС (интерфейс API)
+// ============================================================
+// Это как набор endpoint'ов в REST, но для gRPC.
+// Каждый rpc — это один метод.
+service SubscriptionService {
+  
+  // -------- 4.1. ПОЛУЧИТЬ ВСЕ ПОДПИСКИ (аналог GET /subscriptions) --------
+  // На вход: запрос (пагинация и офсет).
+  // На выход: список подписок.
+  rpc GetSubscriptions (GetSubscriptionsRequest) returns (SubscriptionList);
+
+  // -------- 4.2. СОЗДАТЬ ПОДПИСКУ (аналог POST /subscriptions) --------
+  // На вход: данные новой подписки.
+  // На выход: ID созданной записи.
+  rpc CreateSubscription (CreateRequest) returns (CreateResponse);
+
+  // -------- 4.3. ПОЛУЧИТЬ ОДНУ ПОДПИСКУ ПО ID (аналог GET /subscriptions/{id}) --
+  // На вход: ID.
+  // На выход: полная запись подписки.
+  rpc GetSubscription (GetRequest) returns (Subscription);
+
+  // -------- 4.4. ОБНОВИТЬ ПОДПИСКУ (аналог PUT /subscriptions/{id}) ----------
+  // На вход: ID + новые данные.
+  // На выход: ничего (Empty).
+  rpc UpdateSubscription (UpdateRequest) returns (Empty);
+
+  // -------- 4.5. УДАЛИТЬ ПОДПИСКУ (аналог DELETE /subscriptions/{id}) --------
+  // На вход: ID.
+  // На выход: ничего (Empty).
+  rpc DeleteSubscription (GetRequest) returns (Empty);
+
+  // -------- 4.6. СУММАРНАЯ СТОИМОСТЬ (аналог GET /subscriptions/total-cost) --
+  // На вход: фильтры (user_id, service_name, start_date, end_date).
+  // На выход: сумма (total).
+  rpc GetTotalCost (TotalCostRequest) returns (TotalCostResponse);
+}
+
+// ============================================================
+// 5. СООБЩЕНИЯ (структуры данных)
+// ============================================================
+
+
+
+// 5.2. Одна подписка (полная запись).
+// Повторяет структуру models.Subscription из твоего Go-кода.
+message Subscription {
+  int32  id           = 1;  // ID записи
+  string service_name = 2;  // Название сервиса
+  int32  price        = 3;  // Цена (в рублях)
+  string user_id      = 4;  // UUID пользователя
+  string start_date   = 5;  // Дата начала (MM-YYYY)
+  string end_date     = 6;  // Дата окончания (MM-YYYY) — может быть пустой
+}
+
+// 5.3. Список подписок (для GetSubscriptions).
+message SubscriptionList {
+  repeated Subscription subscriptions = 1;  // repeated = массив/слайс
+}
+// 5.4. Запрос на создание подписки.
+// Отличается от Subscription тем, что ID не передаём — генерирует БД.
+message CreateRequest {
+  string service_name = 1;
+  int32  price        = 2;
+  string user_id      = 3;
+  string start_date   = 4;
+  string end_date     = 5;   // может быть пустым
+}
+
+// 5.5. Ответ на создание.
+message CreateResponse {
+  int32 id = 1;   // вернём ID созданной записи
+}
+
+// 5.6. Запрос по ID (для Get и Delete).
+message GetRequest {
+  int32 id = 1;
+}
+
+// 5.7. Запрос на обновление подписки.
+// Включает ID + все поля, которые можно обновить.
+message UpdateRequest {
+  int32  id           = 1;
+  string service_name = 2;
+  int32  price        = 3;
+  string user_id      = 4;
+  string start_date   = 5;
+  string end_date     = 6;
+}
+
+// 5.8. Запрос на расчёт суммарной стоимости (аналог фильтров в total-cost).
+// Все поля опциональны — если не указаны, фильтрация не применяется.
+message TotalCostRequest {
+  string user_id      = 1;   // если пусто — все пользователи
+  string service_name = 2;   // если пусто — все сервисы
+  string start_date   = 3;   // обязательное поле
+  string end_date     = 4;   // если пусто — до "бесконечности" (2100-01-01)
+}
+
+// 5.9. Ответ на расчёт стоимости.
+message TotalCostResponse {
+  int32 total = 1;   // суммарная стоимость в рублях
+}
+// передаем в запрос о подписках пагинацию и офсет
+message GetSubscriptionsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}

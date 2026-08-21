@@ -15,12 +15,16 @@ import (
 )
 type SubscriptionService struct {
     repo repository.SubscriptionRepository
+	cache cache.Cache
 }
 // NewSubscriptionService — конструктор сервиса
-func NewSubscriptionService(repo repository.SubscriptionRepository) *SubscriptionService {
-    return &SubscriptionService{repo: repo}
-}
 
+func NewSubscriptionService(repo repository.SubscriptionRepository) *SubscriptionService {
+    return &SubscriptionService{
+        repo:  repo,
+        cache: cache.NewRedisCache(), // ← инициализируем реальным кешем
+    }
+}
 // GetTotalCost — рассчитывает суммарную стоимость подписок за указанный период.
 // Параметры:
 //   - ctx: контекст для управления временем жизни запроса
@@ -115,7 +119,7 @@ func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceN
 	// ============================================================
 	// Если Redis доступен и ключ существует — возвращаем значение.
 	// При ошибке Redis (недоступен, таймаут) — игнорируем кеш, идём в БД.
-	cachedValue, err := cache.Get(ctx, cacheKey)
+	cachedValue, err := s.cache.Get(ctx, cacheKey)
 		logger.Debug("cacheKey:%s, ctx:%s",cacheKey,ctx )
 	if err == nil && cachedValue > 0 {
 		// Кеш-попадание: возвращаем сохранённое значение.
@@ -149,7 +153,7 @@ func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceN
 	// TTL достаточно короткий, чтобы даже при сбое инвалидации
 	// данные автоматически протухли через 5 минут.
 	const ttl = 5 * time.Minute
-	if err := cache.Set(ctx, cacheKey, total, ttl); err != nil {
+	if err := s.cache.Set(ctx, cacheKey, total, ttl); err != nil {
 		// Если Redis недоступен — логируем ошибку, но не останавливаем работу.
 		// Пользователь всё равно получит корректные данные из БД.
 		logger.Warn("GetTotalCost: failed to cache result for key %s: %v", cacheKey, err)
@@ -292,4 +296,8 @@ func validateDateRange(start, end time.Time) error {
         return fmt.Errorf("start_date > end_date")
     }
     return nil
+}
+// SetCache — устанавливает кеш для сервиса (используется в тестах)
+func (s *SubscriptionService) SetCache(c cache.Cache) {
+    s.cache = c
 }
