@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"Rest-user-agregator/internal/cache"
@@ -252,4 +253,11 @@ func DeleteSubscriptionsByUserID(userID string) error {
     }
     logger.Debug("DeleteSubscriptionsByUserID: deleted subscriptions for user_id=%s", userID)
     return nil
+}
+// PingWithContext проверяет соединение с PostgreSQL с контекстом
+func PingWithContext(ctx context.Context) error {
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+	return db.PingContext(ctx)
 }

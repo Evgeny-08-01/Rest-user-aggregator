@@ -16,6 +16,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"time" // Для установки TTL (время жизни кеша)
 
 	"Rest-user-agregator/pkg/logger"
@@ -253,4 +254,25 @@ func (r *RedisCache) Keys(ctx context.Context, pattern string) ([]string, error)
 		return []string{}, nil
 	}
 	return r.client.Keys(ctx, pattern).Result()
+}
+// PingWithContext проверяет соединение с Redis с контекстом
+func PingWithContext(ctx context.Context) error {
+	if client == nil {
+		return fmt.Errorf("redis client not initialized")
+	}
+	return client.Ping(ctx).Err()
+}
+// ============================================================
+// 9. ЗАКРЫТИЕ ПОДКЛЮЧЕНИЯ К REDIS
+// ============================================================
+// Close — закрывает соединение с Redis.
+// Безопасно вызывать даже если клиент не инициализирован.
+// ============================================================
+func Close() error {
+    if client == nil {
+        return nil
+    }
+    err := client.Close()
+    client = nil
+    return err
 }
