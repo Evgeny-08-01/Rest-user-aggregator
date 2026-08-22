@@ -588,6 +588,7 @@ func applyMigrations() error {
 	return nil
 }
 // runWithContext — для тестов (завершается по контексту, а не по сигналу)
+//nolint:unused для теста
 func runWithContext(ctx context.Context) error {
     loadEnv()
     initLogger()
@@ -617,6 +618,7 @@ func runWithContext(ctx context.Context) error {
     return runServersWithContext(ctx, svc, authSvc)
 }
 // runServersWithContext — для тестов (завершается по ctx.Done())
+//nolint:unused // для теста
 func runServersWithContext(ctx context.Context, svc *service.SubscriptionService, authService *service.AuthService) error {
     restServer := createRESTServer(svc, authService)
     grpcServer, lis, err := createGRPCServer(svc)
