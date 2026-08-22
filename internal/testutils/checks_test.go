@@ -1,11 +1,13 @@
 package testutils
 
 import (
-	"Rest-user-agregator/internal/cache"
-	"Rest-user-agregator/internal/database"
 	"errors"
 	"testing"
 	"time"
+
+	"Rest-user-agregator/internal/cache"
+	"Rest-user-agregator/internal/database"
+	"Rest-user-agregator/pkg/logger"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -135,8 +137,6 @@ func TestCheckComponent_Success(t *testing.T) {
 		return nil
 	}
 
-	// checkComponent — внутренняя функция, но она доступна в пакете
-	// Используем её напрямую
 	checkComponent(t, "TestComponent", 1*time.Second, mockCheck)
 	t.Log("✅ checkComponent succeeded with mock")
 }
@@ -154,7 +154,6 @@ func TestCheckComponent_Timeout(t *testing.T) {
 		}
 	}()
 
-	// Таймаут 100ms — mockCheck всегда возвращает ошибку
 	checkComponent(t, "TestComponent", 100*time.Millisecond, mockCheck)
 }
 
@@ -188,75 +187,21 @@ func TestAssertReady_Timeout(t *testing.T) {
 }
 
 // ============================================================
-// ТЕСТЫ ДЛЯ БАЗОВЫХ ПРОВЕРОК (с реальными зависимостями)
-// ============================================================
-
-func TestRedisReady_Real(t *testing.T) {
-	// ⚠️ Этот тест требует реального Redis
-	// Проверяем, что функция возвращает func() error
-	check := RedisReady()
-	if check == nil {
-		t.Error("RedisReady returned nil")
-	}
-	
-	// Пытаемся вызвать (может упасть, если Redis не запущен)
-	err := check()
-	if err != nil {
-		t.Logf("Redis not available (expected without Redis): %v", err)
-	} else {
-		t.Log("✅ Redis is available")
-	}
-}
-
-func TestDBReady_Real(t *testing.T) {
-	// ⚠️ Этот тест требует реальной БД
-	check := DBReady()
-	if check == nil {
-		t.Error("DBReady returned nil")
-	}
-	
-	err := check()
-	if err != nil {
-		t.Logf("DB not available (expected without DB): %v", err)
-	} else {
-		t.Log("✅ DB is available")
-	}
-}
-
-// ============================================================
-// ТЕСТЫ ДЛЯ CheckAllDependencies 
+// ТЕСТЫ ДЛЯ CheckAllDependencies
 // ============================================================
 
 func TestCheckAllDependencies_Signature(t *testing.T) {
 	// ✅ Инициализируем Redis
-    cache.InitRedis("localhost:6379", "", 0)
-
-    // ✅ Инициализируем PostgreSQL
-    database.Init("postgres://postgres:1771@localhost:5432/subscriptions?sslmode=disable")
-
-    // ✅ Проверяем, что CheckAllDependencies работает
-    CheckAllDependencies(t, 15*time.Second, "8087", "50051")
-    t.Log("✅ CheckAllDependencies works")
-}
-
-// ============================================================
-// БЕНЧМАРКИ (для производительности)
-// ============================================================
-
-func BenchmarkAnalyzeError(b *testing.B) {
-	err := errors.New("dial tcp 127.0.0.1:6379: connect: connection refused")
-	
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		analyzeError(err)
+	if err := cache.InitRedis("localhost:6379", "", 0); err != nil {
+		logger.Warn("Redis init warning: %v", err)
 	}
-}
 
-func BenchmarkGetHint(b *testing.B) {
-	err := errors.New("connection refused")
-	
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		getHint("Redis", err)
+	// ✅ Инициализируем PostgreSQL
+	if err := database.Init("postgres://postgres:1771@localhost:5432/subscriptions?sslmode=disable"); err != nil {
+		logger.Warn("DB init warning: %v", err)
 	}
+
+	// ✅ Проверяем, что CheckAllDependencies работает
+	CheckAllDependencies(t, 15*time.Second, "8087", "50051")
+	t.Log("✅ CheckAllDependencies works")
 }

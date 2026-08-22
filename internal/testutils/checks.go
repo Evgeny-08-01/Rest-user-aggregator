@@ -11,6 +11,7 @@ import (
 
 	"Rest-user-agregator/internal/cache"
 	"Rest-user-agregator/internal/database"
+	"Rest-user-agregator/pkg/logger"
 
 	"github.com/avast/retry-go/v4"
 	"github.com/stretchr/testify/assert"
@@ -95,13 +96,15 @@ func CheckAllDependencies(t *testing.T, timeout time.Duration, restPort, grpcPor
 
 	// Проверяем PostgreSQL
 	checkComponent(t, "PostgreSQL", timeout, DBReady())
- // ✅ ЗАПУСКАЕМ ВРЕМЕННЫЙ gRPC СЕРВЕР
-    grpcServer, grpcLis := startTempGRPCServer(grpcPort)
-    defer stopTempGRPCServer(grpcServer, grpcLis)
 
-    // ✅ ЗАПУСКАЕМ ВРЕМЕННЫЙ REST СЕРВЕР
-    restServer, restLis := startTempRESTServer(restPort)
-    defer stopTempRESTServer(restServer, restLis)
+	// ✅ ЗАПУСКАЕМ ВРЕМЕННЫЙ gRPC СЕРВЕР
+	grpcServer, grpcLis := startTempGRPCServer(grpcPort)
+	defer stopTempGRPCServer(grpcServer, grpcLis)
+
+	// ✅ ЗАПУСКАЕМ ВРЕМЕННЫЙ REST СЕРВЕР
+	restServer, restLis := startTempRESTServer(restPort)
+	defer stopTempRESTServer(restServer, restLis)
+
 	// Проверяем REST API
 	checkComponent(t, "REST API", timeout, RESTServerReady(restPort))
 
@@ -115,43 +118,41 @@ func CheckAllDependencies(t *testing.T, timeout time.Duration, restPort, grpcPor
 
 // checkComponent — тихая проверка (без t.Logf при успехе)
 func checkComponent(t *testing.T, name string, timeout time.Duration, check func() error) {
-    t.Helper()
+	t.Helper()
 
-    var lastErr error
+	var lastErr error
 
-    ctx, cancel := context.WithTimeout(context.Background(), timeout)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-    err := retry.Do(
-        func() error {
-            if err := check(); err != nil {
-                lastErr = err
-                return err
-            }
-            return nil
-        },
-        retry.Attempts(10),
-        retry.Delay(100*time.Millisecond),
-        retry.DelayType(retry.BackOffDelay),
-        retry.Context(ctx),
-        retry.LastErrorOnly(true),
-    )
+	err := retry.Do(
+		func() error {
+			if err := check(); err != nil {
+				lastErr = err
+				return err
+			}
+			return nil
+		},
+		retry.Attempts(10),
+		retry.Delay(100*time.Millisecond),
+		retry.DelayType(retry.BackOffDelay),
+		retry.Context(ctx),
+		retry.LastErrorOnly(true),
+	)
 
-    if err != nil {
-        errorType := analyzeError(lastErr)
-        hint := getHint(name, lastErr)
+	if err != nil {
+		errorType := analyzeError(lastErr)
+		hint := getHint(name, lastErr)
 
-        // ✅ ОДИН assert (со скобками) — ПРАВИЛЬНЫЙ
-        assert.NoError(t, err,
-            "\n❌ [%s] not ready after %v"+
-                "\n   Last error:   %v"+
-                "\n   Error type:   %s"+
-                "\n   Hint:         %s",
-            name, timeout, lastErr, errorType, hint)
-    }
-
-    // ❌ Логи успеха УБРАНЫ — нет шума
+		assert.NoError(t, err,
+			"\n❌ [%s] not ready after %v"+
+				"\n   Last error:   %v"+
+				"\n   Error type:   %s"+
+				"\n   Hint:         %s",
+			name, timeout, lastErr, errorType, hint)
+	}
 }
+
 // ============================================================
 // 4. АНАЛИЗ ОШИБОК И ПОДСКАЗКИ
 // ============================================================
@@ -193,8 +194,12 @@ func getHint(name string, err error) string {
 		return fmt.Sprintf("Check %s logs.", name)
 	}
 }
-// AssertReady — проверяет один компонент с retry
+
+// ============================================================
+// 5. AssertReady — проверяет один компонент с retry
 // Логи успеха выводятся только при -v
+// ============================================================
+
 func AssertReady(t *testing.T, name string, timeout time.Duration, check func() error) {
 	t.Helper()
 
@@ -237,79 +242,90 @@ func AssertReady(t *testing.T, name string, timeout time.Duration, check func() 
 }
 
 // ============================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ЗАПУСКА ВРЕМЕННЫХ СЕРВЕРОВ
+// 6. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ЗАПУСКА ВРЕМЕННЫХ СЕРВЕРОВ
 // ============================================================
 
 // startTempGRPCServer запускает временный gRPC сервер для проверки
 func startTempGRPCServer(port string) (*grpc.Server, net.Listener) {
-    if port == "" {
-        port = "50051"
-    }
+	if port == "" {
+		port = "50051"
+	}
 
-    grpcServer := grpc.NewServer()
-    lis, err := net.Listen("tcp", ":"+port)
-    if err != nil {
-        return nil, nil
-    }
+	grpcServer := grpc.NewServer()
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		logger.Error("Failed to listen on gRPC port %s: %v", port, err)
+		return nil, nil
+	}
 
-    go func() {
-        if err := grpcServer.Serve(lis); err != nil {
-            // игнорируем ошибку, так как сервер временный
-        }
-    }()
+	go func() {
+		if err := grpcServer.Serve(lis); err != nil {
+			logger.Warn("gRPC test server error: %v", err)
+		}
+	}()
 
-    return grpcServer, lis
+	return grpcServer, lis
 }
 
 // stopTempGRPCServer останавливает временный gRPC сервер
 func stopTempGRPCServer(grpcServer *grpc.Server, lis net.Listener) {
-    if grpcServer != nil {
-        grpcServer.Stop()
-    }
-    if lis != nil {
-        lis.Close()
-    }
+	if grpcServer != nil {
+		grpcServer.Stop()
+	}
+	if lis != nil {
+		if err := lis.Close(); err != nil {
+			logger.Warn("Failed to close gRPC listener: %v", err)
+		}
+	}
 }
+
 // startTempRESTServer запускает временный REST сервер для проверки
 func startTempRESTServer(port string) (*http.Server, net.Listener) {
-    if port == "" {
-        port = "8087"
-    }
+	if port == "" {
+		port = "8087"
+	}
 
-    mux := http.NewServeMux()
-    mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-        w.WriteHeader(http.StatusOK)
-        w.Write([]byte(`{"status":"ok"}`))
-    })
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+			logger.Warn("Failed to write health response: %v", err)
+		}
+	})
 
-    srv := &http.Server{
-        Addr:    ":" + port,
-        Handler: mux,
-    }
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
 
-    lis, err := net.Listen("tcp", ":"+port)
-    if err != nil {
-        return nil, nil
-    }
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		logger.Error("Failed to listen on REST port %s: %v", port, err)
+		return nil, nil
+	}
 
-    go func() {
-        if err := srv.Serve(lis); err != nil && err != http.ErrServerClosed {
-            // игнорируем ошибку
-        }
-    }()
+	go func() {
+		if err := srv.Serve(lis); err != nil && err != http.ErrServerClosed {
+			logger.Warn("REST test server error: %v", err)
+		}
+	}()
 
-    return srv, lis
+	return srv, lis
 }
 
 // stopTempRESTServer останавливает временный REST сервер
 func stopTempRESTServer(srv *http.Server, lis net.Listener) {
-    if srv == nil {
-        return
-    }
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-    defer cancel()
-    srv.Shutdown(ctx)
-    if lis != nil {
-        lis.Close()
-    }
+	if srv == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Warn("Failed to shutdown test REST server: %v", err)
+	}
+	if lis != nil {
+		if err := lis.Close(); err != nil {
+			logger.Warn("Failed to close REST listener: %v", err)
+		}
+	}
 }
