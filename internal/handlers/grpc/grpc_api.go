@@ -22,7 +22,7 @@ func NewSubscriptionServer(svc *service.SubscriptionService) *SubscriptionServer
 func (s *SubscriptionServer) GetSubscriptions(ctx context.Context, req *pb.GetSubscriptionsRequest) (*pb.SubscriptionList, error) {
 	// Получаем userID и role из контекста (metadata в gRPC)
     userID := ""  // потом!  getUserIDFromContext(ctx)
-    role := ""// потом ! getRoleFromContext(ctx)
+    role := "admin"// потом ! getRoleFromContext(ctx)
     limit := int(req.Limit)
     offset := int(req.Offset)
 
@@ -78,6 +78,7 @@ func (s *SubscriptionServer) UpdateSubscription(ctx context.Context, req *pb.Upd
 		StartDate:   req.StartDate,
 		EndDate:     req.EndDate,
 	}
+	
 	 role := "admin"// потом ! getRoleFromContext(ctx)
 
 	err := s.svc.UpdateSubscription(ctx, sub,role)

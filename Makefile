@@ -36,22 +36,26 @@ COVERAGE_FILE=coverage.out
 # ============================================================
 
 .PHONY: test-u
-test-u: ## Run unit tests (with mocks, no database)
+test-u: ## Run all unit tests (with mocks, no database)
 	@echo "========================================="
-	@echo "  RUNNING UNIT TESTS (tag: unit)"
+	@echo "  RUNNING ALL UNIT TESTS (tag: unit)"
 	@echo "========================================="
-	go test ./cmd/api -tags=unit -v   #
+	go test -tags=unit -v ./...
 
 .PHONY: test-int
-test-int: ## Run integration tests (with real DB via Docker)
+test-int: ## Run all integration tests (with real DB via Docker)
 	@echo "========================================="
-	@echo "  RUNNING INTEGRATION TESTS (tag: integration)"
+	@echo "  RUNNING ALL INTEGRATION TESTS (tag: integration)"
 	@echo "========================================="
 	go test -tags=integration -p 1 -count=1 ./...
 
 .PHONY: test-all
-test-all: test-u test-int ## Run unit tests first, then integration tests
-
+test-all: ## Run all tests (unit + integration + no tags)
+	@echo "========================================="
+	@echo "  RUNNING ALL TESTS (unit + integration)"
+	@echo "========================================="
+	go test -tags=unit -v ./... && go test -tags=integration -p 1 -count=1 ./... && go test -p 1 -count=1 ./...
+	
 # ============================================================
 # BUILD
 # ============================================================
@@ -158,12 +162,27 @@ clean: ## Clean build artifacts (bin/, coverage/, cache)
 	@echo "✅ Cleanup done."
 
 # ============================================================
-# HELP
+# MOBILE
 # ============================================================
 
+ADB = /c/AppData/Local/Android/Sdk/platform-tools/adb.exe
+
+.PHONY: adb-reverse
+adb-reverse: ## Пробросить порт для мобильного приложения (USB)
+	@echo "========================================="
+	@echo "  PROXY PORT FOR MOBILE (adb reverse)"
+	@echo "========================================="
+	"C:/AppData/Local/Android/Sdk/platform-tools/adb.exe" reverse tcp:8087 tcp:8087
+	"C:/AppData/Local/Android/Sdk/platform-tools/adb.exe" reverse tcp:50051 tcp:50051
+	@echo "✅ Ports 8087 and 50051 forwarded to mobile device"
+
+# ============================================================
+# HELP
+# ============================================================
 .PHONY: help
 help: ## Show all available commands
 	@echo "========================================="
 	@echo "  AVAILABLE COMMANDS"
 	@echo "========================================="
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+

@@ -13,12 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// ============================================================
-// МОК-РЕПОЗИТОРИЙ
-// ============================================================
 type mockRepo struct {
 	getByIDFunc       func(ctx context.Context, id int) (*models.Subscription, error)
-	listFunc          func(ctx context.Context, limit, offset int) ([]models.Subscription, error)
+	listFunc          func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
 	createFunc        func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
 	updateFunc        func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
 	deleteFunc        func(ctx context.Context, id int) error
@@ -34,9 +31,9 @@ func (m *mockRepo) GetSubscriptionByID(ctx context.Context, id int) (*models.Sub
 	return &models.Subscription{ID: id, ServiceName: "Test"}, nil
 }
 
-func (m *mockRepo) ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+func (m *mockRepo) ListSubscriptions(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
 	if m.listFunc != nil {
-		return m.listFunc(ctx, limit, offset)
+		return m.listFunc(ctx, userID, limit, offset)
 	}
 	return []models.Subscription{}, nil
 }
@@ -83,11 +80,6 @@ func (m *mockRepo) IncrementCacheUserVersion(ctx context.Context, userID string)
 	return nil
 }
 
-// ============================================================
-// ТЕСТЫ
-// ============================================================
-
-// 1. ПОЛУЧЕНИЕ ПОДПИСКИ ПО ID
 func TestGetSubscription(t *testing.T) {
 	repo := &mockRepo{
 		getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
@@ -114,10 +106,9 @@ func TestGetSubscription(t *testing.T) {
 	assert.Equal(t, int32(100), resp.Price)
 }
 
-// 2. СПИСОК ПОДПИСОК
 func TestGetSubscriptions(t *testing.T) {
 	repo := &mockRepo{
-		listFunc: func(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+		listFunc: func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
 			return []models.Subscription{
 				{ID: 1, ServiceName: "Test1", Price: 100},
 				{ID: 2, ServiceName: "Test2", Price: 200},
@@ -137,7 +128,6 @@ func TestGetSubscriptions(t *testing.T) {
 	assert.Equal(t, int32(1), resp.Subscriptions[0].Id)
 }
 
-// 3. СОЗДАНИЕ ПОДПИСКИ
 func TestCreateSubscription(t *testing.T) {
 	repo := &mockRepo{
 		createFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
@@ -162,7 +152,6 @@ func TestCreateSubscription(t *testing.T) {
 	assert.Equal(t, int32(5), resp.Id)
 }
 
-// 4. ОБНОВЛЕНИЕ ПОДПИСКИ
 func TestUpdateSubscription(t *testing.T) {
 	repo := &mockRepo{
 		updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
@@ -186,7 +175,7 @@ func TestUpdateSubscription(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 }
-// 5. УДАЛЕНИЕ ПОДПИСКИ
+
 func TestDeleteSubscription(t *testing.T) {
 	repo := &mockRepo{
 		deleteFunc: func(ctx context.Context, id int) error {
@@ -204,7 +193,6 @@ func TestDeleteSubscription(t *testing.T) {
 	assert.NotNil(t, resp)
 }
 
-// 6. ОБЩАЯ СТОИМОСТЬ
 func TestGetTotalCost(t *testing.T) {
 	repo := &mockRepo{
 		getTotalCostFunc: func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
