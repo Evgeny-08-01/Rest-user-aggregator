@@ -84,7 +84,7 @@ type mockRepo struct {
 	getByIDFunc       func(ctx context.Context, id int) (*models.Subscription, error)
 	updateFunc        func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
 	deleteFunc        func(ctx context.Context, id int) error
-	listFunc          func(ctx context.Context, limit, offset int) ([]models.Subscription, error)
+	listFunc          func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
 	getTotalCostFunc  func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
 	getCacheUserVersionFunc    func(ctx context.Context, userID string) (int, error)
 	incrementCacheUserVersionFunc func(ctx context.Context, userID string) error
@@ -127,9 +127,9 @@ func (m *mockRepo) DeleteSubscription(ctx context.Context, id int) error {
 }
 
 // ListSubscriptions — заглушка для получения списка подписок
-func (m *mockRepo) ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+func (m *mockRepo) ListSubscriptions(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
 	if m.listFunc != nil {
-		return m.listFunc(ctx, limit, offset)
+		return m.listFunc(ctx, userID, limit, offset)
 	}
 	return []models.Subscription{}, nil
 }
@@ -227,35 +227,83 @@ func TestGetSubscriptionByID(t *testing.T) {
 // 3. ТЕСТ: ОБНОВЛЕНИЕ ПОДПИСКИ (UpdateSubscription)
 // ============================================================
 func TestUpdateSubscription(t *testing.T) {
-	repo := &mockRepo{
-		updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
-			if sub.ID != 1 {
-				t.Errorf("Expected ID 1, got %d", sub.ID)
-			}
-			if sub.ServiceName != "Updated" {
-				t.Errorf("Expected 'Updated', got '%s'", sub.ServiceName)
-			}
-			return nil
-		},
-	}
-	svc := NewSubscriptionService(repo)
+    repo := &mockRepo{
+        updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
+            if sub.ID != 1 {
+                t.Errorf("Expected ID 1, got %d", sub.ID)
+            }
+            if sub.ServiceName != "Updated" {
+                t.Errorf("Expected 'Updated', got '%s'", sub.ServiceName)
+            }
+            return nil
+        },
+    }
+    svc := NewSubscriptionService(repo)
 
-	sub := models.Subscription{
-		ID:          1,
-		ServiceName: "Updated",
-		Price:       200,
-		UserID:      "550e8400-e29b-41d4-a716-446655440000",
-		StartDate:   "08-2025",
-		EndDate:     "12-2025",
-	}
+    sub := models.Subscription{
+        ID:          1,
+        ServiceName: "Updated",
+        Price:       200,
+        UserID:      "550e8400-e29b-41d4-a716-446655440000",
+        StartDate:   "12-2026", // ← гарантированно будущая дата
+        EndDate:     "12-2027",
+    }
 
-	err := svc.UpdateSubscription(context.Background(), sub)
+    err := svc.UpdateSubscription(context.Background(), sub,"user")
 
-	if err != nil {
-		t.Fatalf("UpdateSubscription failed: %v", err)
-	}
+    if err != nil {
+        t.Fatalf("UpdateSubscription failed: %v", err)
+    }
 }
+func TestListSubscriptions_AdminSeesAll(t *testing.T) {
+    repo := &mockRepo{
+        listFunc: func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
+            if userID != "" {
+                t.Errorf("Expected empty userID for admin, got '%s'", userID)
+            }
+            return []models.Subscription{{ID: 1}}, nil
+        },
+    }
+    svc := NewSubscriptionService(repo)
 
+    list, err := svc.ListSubscriptions(context.Background(), "", "admin", 10, 0)
+    if err != nil {
+        t.Fatalf("ListSubscriptions failed: %v", err)
+    }
+    if len(list) != 1 {
+        t.Errorf("Expected 1 subscription, got %d", len(list))
+    }
+}
+func TestListSubscriptions_UserSeesOwn(t *testing.T) {
+    repo := &mockRepo{
+        listFunc: func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
+            if userID != "user-123" {
+                t.Errorf("Expected userID 'user-123', got '%s'", userID)
+            }
+            return []models.Subscription{{ID: 2}}, nil
+        },
+    }
+    svc := NewSubscriptionService(repo)
+
+    list, err := svc.ListSubscriptions(context.Background(), "user-123", "user", 10, 0)
+    if err != nil {
+        t.Fatalf("ListSubscriptions failed: %v", err)
+    }
+    if len(list) != 1 {
+        t.Errorf("Expected 1 subscription, got %d", len(list))
+    }
+}
+func TestListSubscriptions_UserWithoutID_Error(t *testing.T) {
+    svc := NewSubscriptionService(&mockRepo{})
+
+    _, err := svc.ListSubscriptions(context.Background(), "", "user", 10, 0)
+    if err == nil {
+        t.Error("Expected error for empty userID, got nil")
+    }
+    if err.Error() != "user_id is required" {
+        t.Errorf("Expected 'user_id is required', got '%s'", err.Error())
+    }
+}
 // ============================================================
 // 4. ТЕСТ: УДАЛЕНИЕ ПОДПИСКИ (DeleteSubscription)
 // ============================================================
@@ -281,33 +329,42 @@ func TestDeleteSubscription(t *testing.T) {
 // 5. ТЕСТ: ПОЛУЧЕНИЕ СПИСКА ПОДПИСОК (ListSubscriptions)
 // ============================================================
 func TestListSubscriptions(t *testing.T) {
-	repo := &mockRepo{
-		listFunc: func(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
-			if limit != 10 {
-				t.Errorf("Expected limit 10, got %d", limit)
-			}
-			if offset != 0 {
-				t.Errorf("Expected offset 0, got %d", offset)
-			}
-			return []models.Subscription{
-				{ID: 1, ServiceName: "Test1"},
-				{ID: 2, ServiceName: "Test2"},
-			}, nil
-		},
-	}
-	svc := NewSubscriptionService(repo)
+    repo := &mockRepo{
+        listFunc: func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
+            if limit != 10 {
+                t.Errorf("Expected limit 10, got %d", limit)
+            }
+            if offset != 0 {
+                t.Errorf("Expected offset 0, got %d", offset)
+            }
+            return []models.Subscription{
+                {ID: 1, ServiceName: "Test1"},
+                {ID: 2, ServiceName: "Test2"},
+            }, nil
+        },
+    }
+    svc := NewSubscriptionService(repo)
 
-	list, err := svc.ListSubscriptions(context.Background(), 10, 0)
+    // ✅ Админ → видит все подписки
+    list, err := svc.ListSubscriptions(context.Background(), "", "admin", 10, 0)
+    if err != nil {
+        t.Fatalf("ListSubscriptions failed: %v", err)
+    }
+    if len(list) != 2 {
+        t.Errorf("Expected 2 subscriptions, got %d", len(list))
+    }
+    if list[0].ID != 1 {
+        t.Errorf("Expected first ID 1, got %d", list[0].ID)
+    }
 
-	if err != nil {
-		t.Fatalf("ListSubscriptions failed: %v", err)
-	}
-	if len(list) != 2 {
-		t.Errorf("Expected 2 subscriptions, got %d", len(list))
-	}
-	if list[0].ID != 1 {
-		t.Errorf("Expected first ID 1, got %d", list[0].ID)
-	}
+    // ✅ Пользователь → видит только свои
+    list, err = svc.ListSubscriptions(context.Background(), "user-123", "user", 10, 0)
+    if err != nil {
+        t.Fatalf("ListSubscriptions failed: %v", err)
+    }
+    if len(list) != 2 {
+        t.Errorf("Expected 2 subscriptions, got %d", len(list))
+    }
 }
 
 // ============================================================

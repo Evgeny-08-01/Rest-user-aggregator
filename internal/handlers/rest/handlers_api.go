@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -153,10 +154,6 @@ func (h *Handler) GetSubscriptionHandler(w http.ResponseWriter, r *http.Request)
 // 3. UpdateSubscriptionHandler-Хэндлер обновления одной строки
 func (h *Handler) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
    role := r.Context().Value(authentication.RoleKey).(string)
-if role != "admin" {
-    writeJSONError(w, http.StatusForbidden, "admin only")
-    return
-}
 	ctx := r.Context()
 	var req models.Subscription
 	// 1. Получить id из url
@@ -184,8 +181,14 @@ if role != "admin" {
 		return
 	}
 	// 4.  Вызвать database.UpdateSubscription
-	err = h.Service.UpdateSubscription(ctx,req)
+	err = h.Service.UpdateSubscription(ctx,req, role)
 if err != nil {
+     // Проверка: ошибка валидации (400)
+    if errors.Is(err, service.ErrCannotChangeStartDate) {
+        logger.Warn("UpdateSubscriptionHandler: validation error: %v", err)
+        writeJSONError(w, http.StatusBadRequest, err.Error())
+        return
+    }
     if err == sql.ErrNoRows {
 	logger.Warn("UpdateSubscriptionHandler: subscription not found for id=%d", id)
         writeJSONError(w, http.StatusNotFound, "Subscription not found")
@@ -217,11 +220,6 @@ if err != nil {
 //   3. Вызывает сервис для удаления подписки из БД
 //   4. Возвращает статус операции или ошибку с соответствующим HTTP-статусом
 func (h *Handler) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-   role := r.Context().Value(authentication.RoleKey).(string)
-if role != "admin" {
-    writeJSONError(w, http.StatusForbidden, "admin only")
-    return
-}
     ctx := r.Context()
     
     // 1. Получить id из URL
@@ -269,7 +267,8 @@ if role != "admin" {
 //   4. Возвращает список подписок в JSON или ошибку с соответствующим HTTP-статусом
 func (h *Handler) ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
-    
+  userID := authentication.GetUserID(ctx)
+role := authentication.GetRole(ctx)  
     // 1. Валидация параметров
     limit := 20 // значение по умолчанию
     offset := 0 // значение по умолчанию
@@ -303,12 +302,17 @@ func (h *Handler) ListSubscriptionsHandler(w http.ResponseWriter, r *http.Reques
         offset = parsed
     }
 
-    // 2. Вызвать сервис для получения списка подписок
-    list, err := h.Service.ListSubscriptions(ctx, limit, offset)
+
+    // 2. Вызвать сервис для получения списка подписок в соответствии с параметром userID и role
+list, err := h.Service.ListSubscriptions(ctx, userID, role, limit, offset)
     if err != nil {
         logger.Error("ListSubscriptionsHandler: database error (limit=%d, offset=%d): %v", limit, offset, err)
         writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
         return
+    }
+// 3. Если list == nil, возвращаем пустой массив
+    if list == nil {
+        list = []models.Subscription{}
     }
 
     // 3. Ответ

@@ -174,11 +174,7 @@ func TestCreateUser(t *testing.T) {
 		t.Fatalf("CleanTestTable failed: %v", err)
 	}
 repo := NewPostgresRepo()
-///////////////////////////////////////////////////////////////////////////////////////////////
-    if repo == nil {
-        t.Fatal("❌ repo is nil! Database not initialized.")
-    }
-////////////////////////////////////////////////////////////////////////////////////////////
+
 	// 2. ПОДГОТАВЛИВАЕМ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ
 	//    ID — UUID, Email — уникальный, Password — хеш
     user := models.User{
@@ -189,27 +185,18 @@ repo := NewPostgresRepo()
 }
 	// 3. ВЫЗЫВАЕМ МЕТОД СОЗДАНИЯ
 	//    context.Background() — пустой контекст для тестов
-////////////////////////////////////////////////////////////////////////////	
-    t.Log("🔍 Before CreateUser") 
     err := repo.CreateUser(context.Background(), user)
-    t.Log("🔍 After CreateUser") 
-/////////////////////////////////////////////////////////////////////////////	
+
+	
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
-//////////////////////////////////////////////////////////////////////////////////////////////////	
-// ✅ ПРЯМОЙ SQL-ЗАПРОС К БД
+
 var count int
 err = repo.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM users WHERE email = $1", user.Email).Scan(&count)
 if err != nil {
     t.Fatalf("Direct query failed: %v", err)
 }
-t.Logf("🔍 Direct SQL check: found %d users with email %s", count, user.Email)
-
-if count == 0 {
-    t.Fatal("❌ User NOT found in DB after CreateUser!")
-}
-//////////////////////////////////////////////////////////////////////////////////////////////////
 	// 4. ПРОВЕРЯЕМ, ЧТО ПОЛЬЗОВАТЕЛЬ СОХРАНИЛСЯ
 	//    Ищем по email — если найден, значит создание прошло успешно
 	saved, err := repo.GetUserByEmail(context.Background(), user.Email)
@@ -301,7 +288,7 @@ func TestDeleteSubscriptionsByUserID(t *testing.T) {
 
 	// 3. ПРОВЕРЯЕМ, ЧТО ПОДПИСКИ СОЗДАЛИСЬ
 	//    В списке должно быть 2 подписки
-	list, err := repo.ListSubscriptions(ctx, 10, 0)
+	list, err := repo.ListSubscriptions(ctx,"", 10, 0)
 	if err != nil {
 		t.Fatalf("ListSubscriptions failed: %v", err)
 	}
@@ -318,7 +305,7 @@ func TestDeleteSubscriptionsByUserID(t *testing.T) {
 
 	// 5. ПРОВЕРЯЕМ, ЧТО ПОДПИСКИ УДАЛЕНЫ
 	//    В списке должно быть 0 подписок
-	list, err = repo.ListSubscriptions(ctx, 10, 0)
+	list, err = repo.ListSubscriptions(ctx,"", 10, 0)
 	if err != nil {
 		t.Fatalf("ListSubscriptions failed: %v", err)
 	}

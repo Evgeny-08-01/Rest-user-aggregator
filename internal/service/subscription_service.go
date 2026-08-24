@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 )
+	var ErrCannotChangeStartDate = errors.New("cannot change start_date that is today or in the past")
 type SubscriptionService struct {
     repo repository.SubscriptionRepository
 	cache cache.Cache
@@ -202,14 +204,17 @@ func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceN
 //   2. Если endDate указан — парсит его в time.Time
 //   3. Вызывает репозиторий для обновления записи в БД
 // Возвращает: - error: ошибка, если парсинг не удался или обновление не удалось
-func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models.Subscription) error {
+func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models.Subscription, role string) error {
     ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
     defer cancel()
     startDate, err := parseDate(sub.StartDate)
     if err != nil {
         return fmt.Errorf("invalid start_date: %w", err)
     }
-
+	if role!="admin"{
+ if !canChangeStartDate(startDate){
+	return ErrCannotChangeStartDate
+ }}
     var endDate *time.Time
     if sub.EndDate != "" {
         parsed, err := parseDate(sub.EndDate)
@@ -261,10 +266,21 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int) er
 // Возвращает:
 //   - []models.Subscription: слайс подписок (может быть пустым)
 //   - error: ошибка, если запрос к БД не удался
-func (s *SubscriptionService) ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
-    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID, role string, limit, offset int) ([]models.Subscription, error) {
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
     defer cancel()
-    return s.repo.ListSubscriptions(ctx, limit, offset)
+
+    // Админ видит всё
+    if role == "admin" {
+        return s.repo.ListSubscriptions(ctx, "", limit, offset)
+    }
+
+    // Обычный пользователь видит только свои
+    if userID == "" {
+        return nil, fmt.Errorf("user_id is required")
+    }
+
+    return s.repo.ListSubscriptions(ctx, userID, limit, offset)
 }
 // ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПАРСИНГА ДАТ
@@ -300,4 +316,10 @@ func validateDateRange(start, end time.Time) error {
 // SetCache — устанавливает кеш для сервиса (используется в тестах)
 func (s *SubscriptionService) SetCache(c cache.Cache) {
     s.cache = c
+}
+func canChangeStartDate(startDate time.Time) bool {
+    now := time.Now().In(time.Local)
+    today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+    start := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.Local)
+    return start.After(today)
 }

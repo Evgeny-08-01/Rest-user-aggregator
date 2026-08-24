@@ -142,15 +142,29 @@ func (r *PostgresRepo) DeleteSubscription(ctx context.Context, id int) error {
 // ListSubscriptions : 5 Метод== - получение списка подписок,
 // отсортированный по user_id + по id, с пагинацией(limit, offset)  *************** List
 // ListSubscriptions - возвращает список подписок с пагинацией, отсортированный по user_id и id
-func (r *PostgresRepo) ListSubscriptions(ctx context.Context,limit, offset int) ([]models.Subscription, error) {
-	query := `SELECT id, service_name, price, user_id, start_date, end_date 
+func (r *PostgresRepo) ListSubscriptions(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
+    var query string
+    var args []any
+
+	if userID == "" {
+        // Админ: все подписки
+        query = `SELECT id, service_name, price, user_id, start_date, end_date 
               FROM subscriptions 
               ORDER BY user_id, id
               LIMIT $1 OFFSET $2`
-
-	rows, err := r.db.QueryContext(ctx,query, limit, offset)
+ args = []any{limit, offset}
+   } else {
+        // Обычный пользователь: только свои подписки
+         query = `SELECT id, service_name, price, user_id, start_date, end_date 
+                 FROM subscriptions 
+                 WHERE user_id = $1
+                 ORDER BY user_id, id
+                 LIMIT $2 OFFSET $3`
+        args = []any{userID, limit, offset}
+    }
+	rows, err := r.db.QueryContext(ctx,query,args...)
 	if err != nil {
-		 logger.Error("ListSubscriptions: query failed with limit=%d, offset=%d: %v", limit, offset, err)
+		 logger.Error("ListSubscriptions: query failed: %v",  err)
 		return nil, err
 	}
 	defer rows.Close()

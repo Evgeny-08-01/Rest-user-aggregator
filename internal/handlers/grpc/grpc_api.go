@@ -20,6 +20,9 @@ func NewSubscriptionServer(svc *service.SubscriptionService) *SubscriptionServer
 }
 // GetSubscriptions — список всех подписок
 func (s *SubscriptionServer) GetSubscriptions(ctx context.Context, req *pb.GetSubscriptionsRequest) (*pb.SubscriptionList, error) {
+	// Получаем userID и role из контекста (metadata в gRPC)
+    userID := ""  // потом!  getUserIDFromContext(ctx)
+    role := ""// потом ! getRoleFromContext(ctx)
     limit := int(req.Limit)
     offset := int(req.Offset)
 
@@ -30,7 +33,7 @@ func (s *SubscriptionServer) GetSubscriptions(ctx context.Context, req *pb.GetSu
         offset = 0
     }
 
-    subs, err := s.svc.ListSubscriptions(ctx, limit, offset)
+    subs, err := s.svc.ListSubscriptions(ctx, userID, role, limit, offset)
     if err != nil {
         return nil, status.Error(codes.Internal, err.Error())
     }
@@ -75,7 +78,9 @@ func (s *SubscriptionServer) UpdateSubscription(ctx context.Context, req *pb.Upd
 		StartDate:   req.StartDate,
 		EndDate:     req.EndDate,
 	}
-	err := s.svc.UpdateSubscription(ctx, sub)
+	 role := "admin"// потом ! getRoleFromContext(ctx)
+
+	err := s.svc.UpdateSubscription(ctx, sub,role)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

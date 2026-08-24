@@ -63,3 +63,10 @@ func GetUserID(ctx context.Context) string {
 	}
 	return ""
 }
+// GetUserRole - возвращаем роль пользователя RoleKey  из конекста
+func GetRole(ctx context.Context) string {
+    if v := ctx.Value(RoleKey); v != nil {
+        return v.(string)
+    }
+    return ""
+}

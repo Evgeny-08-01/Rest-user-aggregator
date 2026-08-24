@@ -58,8 +58,8 @@ func GenerateToken(userID, email, role string) (string, error) {
 		return "", errors.New("JWT_SECRET is not set in .env file")
 	}
 
-	// 2. Устанавливаем время жизни токена (24 часа)
-	expirationTime := time.Now().Add(24 * time.Hour)
+	// 2. Устанавливаем время жизни токена (10000 часа-для упрощения тестирования)
+	expirationTime := time.Now().Add(10000 * time.Hour)// 10000- для упрощения тестирования
 
 	// 3. Создаём claims (данные, которые будут в токене)
 	claims := Claims{

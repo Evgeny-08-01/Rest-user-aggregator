@@ -15,7 +15,7 @@ type SubscriptionRepository interface {
     GetSubscriptionByID(ctx context.Context, id int) (*models.Subscription, error)
     UpdateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
     DeleteSubscription(ctx context.Context, id int) error
-    ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error)
+    ListSubscriptions(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
     GetTotalCost(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) 
 // ============================================================
     // МЕТОДЫ ДЛЯ РАБОТЫ С КЕШЕМ (таблица cache_control_user)

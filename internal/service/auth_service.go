@@ -94,10 +94,10 @@ func (s *AuthService) Register(ctx context.Context, email, password, role string
 		role = "user"
 	}
 	// Запрет на создание админа через API
-	if role == "admin" {
-		logger.Warn("AuthService.Register: attempt to create admin via API: %s", email)
-		return errors.New("admin role cannot be created via API")
-	}
+//	if role == "admin" {
+//		logger.Warn("AuthService.Register: attempt to create admin via API: %s", email)
+//		return errors.New("admin role cannot be created via API")
+//	}
 	// 5. Создаём пользователя
 	user := models.User{
 		ID:       uuid.New().String(),

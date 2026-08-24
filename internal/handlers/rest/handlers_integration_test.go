@@ -1244,3 +1244,132 @@ func TestCacheInvalidationAfterDelete(t *testing.T) {
     t.Log("Both v1 and v2 keys exist — v1 is ignored because version changed")
 }
 // createTestUser создаёт тестового пользователя, если его ещё нет
+
+
+// ============================================================
+// ТЕСТ: ПОЛЬЗОВАТЕЛЬ ВИДИТ ТОЛЬКО СВОИ ПОДПИСКИ
+// ============================================================
+func TestListSubscriptionsHandler_UserSeesOwn(t *testing.T) {
+    t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
+    if err := database.CleanTestTable(); err != nil {
+        t.Fatalf("Failed to clean table: %v", err)
+    }
+
+    userID1 := "550e8400-e29b-41d4-a716-446655440000"
+    userID2 := "550e8400-e29b-41d4-a716-446655440001"
+    createTestUser(t, userID1)
+    createTestUser(t, userID2)
+
+    handler := setupTestHandler()
+
+    // Создаём подписки для двух пользователей
+    bodies := []struct {
+        userID string
+        name   string
+    }{
+        {userID1, "Sub1"},
+        {userID2, "Sub2"},
+    }
+
+    for _, b := range bodies {
+        body := fmt.Sprintf(`{"service_name":"%s","price":100,"user_id":"%s","start_date":"07-2025"}`,
+            b.name, b.userID)
+        req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(body)))
+        req = addAdminContext(req)
+        w := httptest.NewRecorder()
+        handler.CreateSubscriptionHandler(w, req)
+        if w.Code != http.StatusCreated {
+            t.Fatalf("failed to create subscription for %s: %d", b.userID, w.Code)
+        }
+    }
+
+    // Пользователь должен видеть только свои подписки
+    token := createTestUser(t, userID1)
+    req := httptest.NewRequest("GET", "/api/subscriptions", nil)
+    req.Header.Set("Authorization", "Bearer "+token)
+    req = addTestContext(req, userID1, "user")
+    w := httptest.NewRecorder()
+    handler.ListSubscriptionsHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("expected 200, got %d", w.Code)
+    }
+
+    var list []models.Subscription
+    if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
+        t.Fatalf("failed to decode response: %v", err)
+    }
+
+    if len(list) != 1 {
+        t.Errorf("expected 1 subscription for user, got %d", len(list))
+    }
+    if len(list) > 0 && list[0].UserID != userID1 {
+        t.Errorf("expected user_id %s, got %s", userID1, list[0].UserID)
+    }
+}// ============================================================
+// ТЕСТ: АДМИН ВИДИТ ВСЕ ПОДПИСКИ
+// ============================================================
+func TestListSubscriptionsHandler_AdminSeesAll(t *testing.T) {
+    t.Cleanup(func() {
+        if err := database.CleanTestTable(); err != nil {
+            t.Logf("Cleanup failed: %v", err)
+        }
+    })
+
+    if err := database.CleanTestTable(); err != nil {
+        t.Fatalf("Failed to clean table: %v", err)
+    }
+
+    // Создаём двух пользователей
+    userID1 := "550e8400-e29b-41d4-a716-446655440000"
+    userID2 := "550e8400-e29b-41d4-a716-446655440001"
+    createTestUser(t, userID1)
+    createTestUser(t, userID2)
+
+    handler := setupTestHandler()
+
+    // Создаём подписки для двух пользователей
+    bodies := []struct {
+        userID string
+        name   string
+    }{
+        {userID1, "Sub1"},
+        {userID2, "Sub2"},
+    }
+
+    for _, b := range bodies {
+        body := fmt.Sprintf(`{"service_name":"%s","price":100,"user_id":"%s","start_date":"07-2025"}`,
+            b.name, b.userID)
+        req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(body)))
+        req = addAdminContext(req)
+        w := httptest.NewRecorder()
+        handler.CreateSubscriptionHandler(w, req)
+        if w.Code != http.StatusCreated {
+            t.Fatalf("failed to create subscription for %s: %d", b.userID, w.Code)
+        }
+    }
+
+    // Админ должен видеть все подписки
+    req := httptest.NewRequest("GET", "/api/subscriptions", nil)
+    req = addAdminContext(req)
+    w := httptest.NewRecorder()
+    handler.ListSubscriptionsHandler(w, req)
+
+    if w.Code != http.StatusOK {
+        t.Fatalf("expected 200, got %d", w.Code)
+    }
+
+    var list []models.Subscription
+    if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
+        t.Fatalf("failed to decode response: %v", err)
+    }
+
+    if len(list) != 2 {
+        t.Errorf("expected 2 subscriptions for admin, got %d", len(list))
+    }
+}
