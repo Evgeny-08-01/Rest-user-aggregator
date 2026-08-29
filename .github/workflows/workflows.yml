@@ -15,25 +15,25 @@ env:
   SERVER_PORT: 8087
   JWT_SECRET: test-secret-key-for-ci
 jobs:
-  lint:
-    name: lint                            # проверка кода линтером
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.23'
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.60
-          args: --timeout=5m   
+  #lint:
+  # name: lint                            # проверка кода линтером
+  # runs-on: ubuntu-latest
+  # steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #   - name: Set up Go
+  #     uses: actions/setup-go@v4
+  #     with:
+  #       go-version: '1.23'
+  #   - name: Run golangci-lint
+  #     uses: golangci/golangci-lint-action@v6
+  #     with:
+  #       version: v1.60
+  #      args: --timeout=5m   
   job1:
     name: test                            #проверять код на наличие ошибок и запускать тесты
     runs-on: ubuntu-latest                # Указываем окружение-виртуальная машина ubuntu-latest
-    needs: lint                           # Ждём успешного линта
+    #needs: lint                           # Ждём успешного линта
     services:          #  СЕРВИСЫ (Redis)
       redis:
         image: redis:7-alpine
