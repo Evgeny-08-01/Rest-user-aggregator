@@ -63,7 +63,7 @@ func (l Level) String() string {
 var currentLevel Level = INFO
 
 // Init инициализирует логгер с указанным уровнем
-func Init(logFile string, level string) {
+func Init(logFile, level string) {
 	// Устанавливаем уровень
 	switch level {
 	case "debug":
@@ -81,7 +81,7 @@ func Init(logFile string, level string) {
 	}
 
 	// Открываем файл для записи
-	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		Warn("Cannot open log file, using stdout only: %v", err)
 		log.SetOutput(os.Stdout)

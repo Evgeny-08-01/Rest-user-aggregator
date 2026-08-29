@@ -152,7 +152,7 @@ func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceN
 // Возвращает:
 //   - int: ID созданной подписки
 //   - error: ошибка валидации или БД
-func (s *SubscriptionService) CreateSubscription(ctx context.Context, templateID int, userID string, startDate, endDate string) (int, error) {
+func (s *SubscriptionService) CreateSubscription(ctx context.Context, templateID int, userID, startDate, endDate string) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -305,7 +305,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models
 //   - error: ErrUserIDRequired если userID пустой
 //   - error: ErrPermissionDenied если пользователь не владелец и не админ
 //   - error: другие ошибки БД
-func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int, userID string, role string) (*models.Subscription, error) {
+func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int, userID, role string) (*models.Subscription, error) {
 	// ============================================================
 	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
 	// ============================================================
@@ -349,7 +349,7 @@ func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int, u
 //   - error: ErrPermissionDenied если пользователь не владелец и не админ
 //   - error: sql.ErrNoRows если подписка не найдена
 //   - error: другие ошибки БД
-func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int, userID string, role string) error {
+func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int, userID, role string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
