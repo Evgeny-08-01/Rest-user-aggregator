@@ -43,49 +43,51 @@ func NewTemplateService(repo repository.TemplateRepository) *TemplateService {
 // Параметры:
 //   - serviceName: название сервиса (обязательно, не пустое)
 //   - price: цена в рублях (>= 0)
+//
 // Возвращает:
 //   - int: ID созданного шаблона
 //   - error: ErrTemplateAlreadyExists если шаблон с таким названием уже существует
 //   - error: ошибка валидации или БД
 func (s *TemplateService) CreateTemplate(ctx context.Context, serviceName string, price int) (int, error) {
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-    // ============================================================
-    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
-    // ============================================================
-    if serviceName == "" {
-        return 0, fmt.Errorf("service_name is required")
-    }
-    if price < 0 {
-        return 0, fmt.Errorf("price cannot be negative")
-    }
+	// ============================================================
+	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
+	// ============================================================
+	if serviceName == "" {
+		return 0, fmt.Errorf("service_name is required")
+	}
+	if price < 0 {
+		return 0, fmt.Errorf("price cannot be negative")
+	}
 
-    // ============================================================
-    // 2. БИЗНЕС-ЛОГИКА
-    // ============================================================
+	// ============================================================
+	// 2. БИЗНЕС-ЛОГИКА
+	// ============================================================
 
-    // 2.1. Проверяем, существует ли шаблон с таким названием
-    existing, err := s.repo.GetTemplateByName(ctx, serviceName)
-    if err != nil {
-        logger.Error("CreateTemplate: failed to check existing template: %v", err)
-        return 0, err
-    }
-    if existing != nil {
-        logger.Warn("CreateTemplate: template already exists: %s", serviceName)
-        return 0, ErrTemplateAlreadyExists
-    }
+	// 2.1. Проверяем, существует ли шаблон с таким названием
+	existing, err := s.repo.GetTemplateByName(ctx, serviceName)
+	if err != nil {
+		logger.Error("CreateTemplate: failed to check existing template: %v", err)
+		return 0, err
+	}
+	if existing != nil {
+		logger.Warn("CreateTemplate: template already exists: %s", serviceName)
+		return 0, ErrTemplateAlreadyExists
+	}
 
-    // 2.2. Создаём шаблон
-    id, err := s.repo.CreateTemplate(ctx, serviceName, price)
-    if err != nil {
-        logger.Error("CreateTemplate: failed to create template: %v", err)
-        return 0, err
-    }
+	// 2.2. Создаём шаблон
+	id, err := s.repo.CreateTemplate(ctx, serviceName, price)
+	if err != nil {
+		logger.Error("CreateTemplate: failed to create template: %v", err)
+		return 0, err
+	}
 
-    logger.Info("CreateTemplate: template created: id=%d, name=%s, price=%d", id, serviceName, price)
-    return id, nil
+	logger.Info("CreateTemplate: template created: id=%d, name=%s, price=%d", id, serviceName, price)
+	return id, nil
 }
+
 // ============================================================
 // 2. ПОЛУЧЕНИЕ СПИСКА ВСЕХ ШАБЛОНОВ (ListTemplates)
 // ============================================================
@@ -99,6 +101,7 @@ func (s *TemplateService) CreateTemplate(ctx context.Context, serviceName string
 // ВОЗВРАЩАЕТ:
 //   - []models.Template: список шаблонов (может быть пустым)
 //   - error: ошибка, если запрос не удался
+//
 // ============================================================
 func (s *TemplateService) ListTemplates(ctx context.Context) ([]models.Template, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -128,6 +131,7 @@ func (s *TemplateService) ListTemplates(ctx context.Context) ([]models.Template,
 // ВОЗВРАЩАЕТ:
 //   - *models.Template: шаблон или nil
 //   - error: ошибка, если запрос не удался
+//
 // ============================================================
 func (s *TemplateService) GetTemplateByID(ctx context.Context, id int) (*models.Template, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -165,6 +169,7 @@ func (s *TemplateService) GetTemplateByID(ctx context.Context, id int) (*models.
 //
 // ВОЗВРАЩАЕТ:
 //   - error: ошибка, если шаблон не найден или название занято
+//
 // ============================================================
 func (s *TemplateService) UpdateTemplate(ctx context.Context, id int, serviceName string, price int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -226,6 +231,7 @@ func (s *TemplateService) UpdateTemplate(ctx context.Context, id int, serviceNam
 //
 // ВОЗВРАЩАЕТ:
 //   - error: ошибка, если шаблон не найден или есть подписки
+//
 // ============================================================
 func (s *TemplateService) DeleteTemplate(ctx context.Context, id int) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

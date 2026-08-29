@@ -16,26 +16,26 @@ import (
 // CreateSubscription : 1 Метод== добавляет подписку в конец БД
 // возвращает id+error
 func (r *PostgresRepo) CreateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
-// Проверка на дубликат
-var count int
-err := r.db.QueryRowContext(ctx,
-    "SELECT COUNT(*) FROM subscriptions WHERE user_id = $1 AND template_id = $2",
-    sub.UserID, sub.TemplateID,
-).Scan(&count)
-if err != nil {
-    return 0, err
-}
-if count > 0 {
-    return 0, errors.New("duplicate")
-}	
-    var id int
-    query := `INSERT INTO subscriptions (user_id, template_id, start_date, end_date) VALUES ($1,$2,$3,$4) RETURNING id`
+	// Проверка на дубликат
+	var count int
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM subscriptions WHERE user_id = $1 AND template_id = $2",
+		sub.UserID, sub.TemplateID,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	if count > 0 {
+		return 0, errors.New("duplicate")
+	}
+	var id int
+	query := `INSERT INTO subscriptions (user_id, template_id, start_date, end_date) VALUES ($1,$2,$3,$4) RETURNING id`
 	err = r.db.QueryRowContext(ctx, query,
-    sub.UserID,
-    sub.TemplateID, // нужно добавить TemplateID в models.Subscription
-    startDate,
-    endDate,
-).Scan(&id)
+		sub.UserID,
+		sub.TemplateID, // нужно добавить TemplateID в models.Subscription
+		startDate,
+		endDate,
+	).Scan(&id)
 
 	if err != nil {
 		logger.Error("CreateSubscription: failed to insert subscription (service=%s, user_id=%s): %v",
@@ -54,7 +54,7 @@ if count > 0 {
 
 // GetSubscriptionByID : 2 Метод==  получение подписки по ID***************** Read
 func (r *PostgresRepo) GetSubscriptionByID(ctx context.Context, id int) (*models.Subscription, error) {
-    query := `
+	query := `
         SELECT 
             s.id,
             s.user_id,
@@ -67,66 +67,66 @@ func (r *PostgresRepo) GetSubscriptionByID(ctx context.Context, id int) (*models
         WHERE s.id = $1
     `
 
-    var sub models.Subscription
-    var startDate time.Time
-    var endDate sql.NullTime
-    var serviceName sql.NullString
-    var price sql.NullInt64
+	var sub models.Subscription
+	var startDate time.Time
+	var endDate sql.NullTime
+	var serviceName sql.NullString
+	var price sql.NullInt64
 
-    err := r.db.QueryRowContext(ctx, query, id).Scan(
-        &sub.ID,
-        &sub.UserID,
-        &startDate,
-        &endDate,
-        &serviceName,
-        &price,
-    )
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return nil, nil
-        }
-        logger.Error("GetSubscriptionByID: scan failed for id=%d: %v", id, err)
-        return nil, err
-    }
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&sub.ID,
+		&sub.UserID,
+		&startDate,
+		&endDate,
+		&serviceName,
+		&price,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		logger.Error("GetSubscriptionByID: scan failed for id=%d: %v", id, err)
+		return nil, err
+	}
 
-    sub.StartDate = startDate.Format("01-2006")
-    if endDate.Valid {
-        sub.EndDate = endDate.Time.Format("01-2006")
-    }
+	sub.StartDate = startDate.Format("01-2006")
+	if endDate.Valid {
+		sub.EndDate = endDate.Time.Format("01-2006")
+	}
 
-    if serviceName.Valid {
-        sub.ServiceName = serviceName.String
-    } else {
-        sub.ServiceName = "Удалённый шаблон"
-    }
+	if serviceName.Valid {
+		sub.ServiceName = serviceName.String
+	} else {
+		sub.ServiceName = "Удалённый шаблон"
+	}
 
-    if price.Valid {
-        sub.Price = int(price.Int64)
-    } else {
-        sub.Price = 0
-    }
+	if price.Valid {
+		sub.Price = int(price.Int64)
+	} else {
+		sub.Price = 0
+	}
 
-    return &sub, nil
+	return &sub, nil
 }
 
 // UpdateSubscription : 3 Метод== обновление подписки
 // Принимает уже готовые startDate и endDate (time.Time)
 func (r *PostgresRepo) UpdateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
-/*	query := `UPDATE subscriptions SET user_id = $1, start_date = $2, end_date = $3 WHERE id = $4`
+	/*	query := `UPDATE subscriptions SET user_id = $1, start_date = $2, end_date = $3 WHERE id = $4`
+
+		result, err := r.db.ExecContext(ctx, query,
+			sub.UserID,
+			startDate,
+			endDate,
+			sub.ID,
+		)*/
+	query := `UPDATE subscriptions SET start_date = $1, end_date = $2 WHERE id = $3`
 
 	result, err := r.db.ExecContext(ctx, query,
-		sub.UserID,
 		startDate,
 		endDate,
 		sub.ID,
-	)*/
- query := `UPDATE subscriptions SET start_date = $1, end_date = $2 WHERE id = $3`
-
-	result, err := r.db.ExecContext(ctx, query,
-		startDate,
-		endDate,
-		sub.ID,
-	)   
+	)
 	if err != nil {
 		logger.Error("UpdateSubscription: exec failed for id %d: %v", sub.ID, err)
 		return err
@@ -190,6 +190,7 @@ func (r *PostgresRepo) DeleteSubscription(ctx context.Context, id int) error {
 
 	return nil
 }
+
 // ============================================================
 // ListSubscriptions — получение списка подписок с пагинацией
 // ============================================================
@@ -201,17 +202,18 @@ func (r *PostgresRepo) DeleteSubscription(ctx context.Context, id int) error {
 // АЛИАСЫ:
 //   - s — subscriptions (подписки)
 //   - t — subscription_templates (шаблоны)
+//
 // ============================================================
 func (r *PostgresRepo) ListSubscriptions(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
-    // ============================================================
-    // 1. SQL-ЗАПРОС С ВЕТВЛЕНИЕМ
-    // ============================================================
-    var query string
-    var args []any
+	// ============================================================
+	// 1. SQL-ЗАПРОС С ВЕТВЛЕНИЕМ
+	// ============================================================
+	var query string
+	var args []any
 
-    if userID == "" {
-        // Админ: все подписки (без WHERE)
-        query = `
+	if userID == "" {
+		// Админ: все подписки (без WHERE)
+		query = `
             SELECT 
                 s.id,           -- ID подписки
                 s.user_id,      -- ID пользователя
@@ -227,10 +229,10 @@ func (r *PostgresRepo) ListSubscriptions(ctx context.Context, userID string, lim
                 s.id
             LIMIT $1 OFFSET $2
         `
-        args = []any{limit, offset}
-    } else {
-        // Пользователь: только свои подписки
-        query = `
+		args = []any{limit, offset}
+	} else {
+		// Пользователь: только свои подписки
+		query = `
             SELECT 
                 s.id,           -- ID подписки
                 s.user_id,      -- ID пользователя
@@ -248,88 +250,89 @@ func (r *PostgresRepo) ListSubscriptions(ctx context.Context, userID string, lim
                 s.id
             LIMIT $2 OFFSET $3
         `
-        args = []any{userID, limit, offset}
-    }
+		args = []any{userID, limit, offset}
+	}
 
-    // ============================================================
-    // 2. ВЫПОЛНЯЕМ ЗАПРОС
-    // ============================================================
-    rows, err := r.db.QueryContext(ctx, query, args...)
-    if err != nil {
-        logger.Error("ListSubscriptions: query failed: %v", err)
-        return nil, err
-    }
-    defer rows.Close()
+	// ============================================================
+	// 2. ВЫПОЛНЯЕМ ЗАПРОС
+	// ============================================================
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		logger.Error("ListSubscriptions: query failed: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
 
-    // ============================================================
-    // 3. ПРОХОДИМ ПО РЕЗУЛЬТАТАМ
-    // ============================================================
-    var subscriptions []models.Subscription
+	// ============================================================
+	// 3. ПРОХОДИМ ПО РЕЗУЛЬТАТАМ
+	// ============================================================
+	var subscriptions []models.Subscription
 
-    for rows.Next() {
-        var sub models.Subscription
-        var startDate time.Time
-        var endDate sql.NullTime
-        var serviceName sql.NullString
-        var price sql.NullInt64
+	for rows.Next() {
+		var sub models.Subscription
+		var startDate time.Time
+		var endDate sql.NullTime
+		var serviceName sql.NullString
+		var price sql.NullInt64
 
-        // Сканируем поля
-        err := rows.Scan(
-            &sub.ID,
-            &sub.UserID,
-            &startDate,
-            &endDate,
-            &serviceName,
-            &price,
-        )
-        if err != nil {
-            logger.Error("ListSubscriptions: scan failed: %v", err)
-            return nil, err
-        }
+		// Сканируем поля
+		err := rows.Scan(
+			&sub.ID,
+			&sub.UserID,
+			&startDate,
+			&endDate,
+			&serviceName,
+			&price,
+		)
+		if err != nil {
+			logger.Error("ListSubscriptions: scan failed: %v", err)
+			return nil, err
+		}
 
-        // ============================================================
-        // 4. ФОРМАТИРУЕМ ДАТЫ (MM-YYYY)
-        // ============================================================
-        sub.StartDate = startDate.Format("01-2006")
-        if endDate.Valid {
-            sub.EndDate = endDate.Time.Format("01-2006")
-        }
+		// ============================================================
+		// 4. ФОРМАТИРУЕМ ДАТЫ (MM-YYYY)
+		// ============================================================
+		sub.StartDate = startDate.Format("01-2006")
+		if endDate.Valid {
+			sub.EndDate = endDate.Time.Format("01-2006")
+		}
 
-        // ============================================================
-        // 5. НАЗВАНИЕ И ЦЕНА (ЕСЛИ ШАБЛОН ЕСТЬ)
-        // ============================================================
-        if serviceName.Valid {
-            sub.ServiceName = serviceName.String
-        } else {
-            sub.ServiceName = "Удалённый шаблон"
-        }
+		// ============================================================
+		// 5. НАЗВАНИЕ И ЦЕНА (ЕСЛИ ШАБЛОН ЕСТЬ)
+		// ============================================================
+		if serviceName.Valid {
+			sub.ServiceName = serviceName.String
+		} else {
+			sub.ServiceName = "Удалённый шаблон"
+		}
 
-        if price.Valid {
-            sub.Price = int(price.Int64)
-        } else {
-            sub.Price = 0
-        }
+		if price.Valid {
+			sub.Price = int(price.Int64)
+		} else {
+			sub.Price = 0
+		}
 
-        // Добавляем в результат
-        subscriptions = append(subscriptions, sub)
-    }
+		// Добавляем в результат
+		subscriptions = append(subscriptions, sub)
+	}
 
-    // ============================================================
-    // 6. ПРОВЕРЯЕМ ОШИБКИ ПОСЛЕ ИТЕРАЦИИ
-    // ============================================================
-    if err = rows.Err(); err != nil {
-        logger.Error("ListSubscriptions: rows error: %v", err)
-        return nil, err
-    }
+	// ============================================================
+	// 6. ПРОВЕРЯЕМ ОШИБКИ ПОСЛЕ ИТЕРАЦИИ
+	// ============================================================
+	if err = rows.Err(); err != nil {
+		logger.Error("ListSubscriptions: rows error: %v", err)
+		return nil, err
+	}
 
-    logger.Debug("ListSubscriptions: successfully fetched %d subscriptions (limit=%d, offset=%d)",
-        len(subscriptions), limit, offset)
-    return subscriptions, nil
+	logger.Debug("ListSubscriptions: successfully fetched %d subscriptions (limit=%d, offset=%d)",
+		len(subscriptions), limit, offset)
+	return subscriptions, nil
 }
+
 // GetTotalCost -: 6 Метод возвращает суммарную стоимость подписок за период с фильтрацией
 func (r *PostgresRepo) GetTotalCost(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
-    // Базовый запрос: суммарная стоимость подписок за период
-    query := `
+	// Базовый запрос: суммарная стоимость подписок за период
+	query := `
         SELECT COALESCE(SUM(subscription_templates.price * (EXTRACT(MONTH FROM AGE(
             LEAST(COALESCE(subscriptions.end_date, 'infinity'), $2),
             GREATEST(subscriptions.start_date, $1)
@@ -339,37 +342,37 @@ func (r *PostgresRepo) GetTotalCost(ctx context.Context, userID, serviceName str
         WHERE subscriptions.start_date <= $2 
           AND (subscriptions.end_date IS NULL OR subscriptions.end_date >= $1)`
 
-    // Аргументы: $1 = startDate, $2 = endDate
-    args := []any{startDate, endDate}
+	// Аргументы: $1 = startDate, $2 = endDate
+	args := []any{startDate, endDate}
 
-    // Фильтр по user_id (если передан)
-    if userID != "" {
-        query += " AND subscriptions.user_id = $" + strconv.Itoa(len(args)+1)
-        args = append(args, userID)
-    }
+	// Фильтр по user_id (если передан)
+	if userID != "" {
+		query += " AND subscriptions.user_id = $" + strconv.Itoa(len(args)+1)
+		args = append(args, userID)
+	}
 
-    // Фильтр по service_name (если передан)
-    if serviceName != "" {
-        // Экранируем спецсимволы LIKE: % и _
-        safeServiceName := strings.ReplaceAll(serviceName, "%", "\\%")
-        safeServiceName = strings.ReplaceAll(safeServiceName, "_", "\\_")
+	// Фильтр по service_name (если передан)
+	if serviceName != "" {
+		// Экранируем спецсимволы LIKE: % и _
+		safeServiceName := strings.ReplaceAll(serviceName, "%", "\\%")
+		safeServiceName = strings.ReplaceAll(safeServiceName, "_", "\\_")
 
-        // ILIKE — регистронезависимый поиск
-        // ESCAPE '\' — защита от спецсимволов
-        query += " AND subscription_templates.service_name ILIKE '%' || $" + strconv.Itoa(len(args)+1) + " || '%' ESCAPE '\\'"
-        args = append(args, safeServiceName)
-    }
+		// ILIKE — регистронезависимый поиск
+		// ESCAPE '\' — защита от спецсимволов
+		query += " AND subscription_templates.service_name ILIKE '%' || $" + strconv.Itoa(len(args)+1) + " || '%' ESCAPE '\\'"
+		args = append(args, safeServiceName)
+	}
 
-    var total int
-    logger.Debug("GetTotalCost: query=%s, args=%v", query, args)
-    err := r.db.QueryRowContext(ctx, query, args...).Scan(&total)
-    if err != nil {
-        logger.Error("GetTotalCost: query failed with userID=%s, serviceName=%s, startDate=%s, endDate=%s: %v",
-            userID, serviceName, startDate, endDate, err)
-        return 0, err
-    }
+	var total int
+	logger.Debug("GetTotalCost: query=%s, args=%v", query, args)
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&total)
+	if err != nil {
+		logger.Error("GetTotalCost: query failed with userID=%s, serviceName=%s, startDate=%s, endDate=%s: %v",
+			userID, serviceName, startDate, endDate, err)
+		return 0, err
+	}
 
-    logger.Debug("GetTotalCost: successfully calculated total cost=%d for userID=%s, serviceName=%s, period=%s to %s",
-        total, userID, serviceName, startDate, endDate)
-    return total, nil
+	logger.Debug("GetTotalCost: successfully calculated total cost=%d for userID=%s, serviceName=%s, period=%s to %s",
+		total, userID, serviceName, startDate, endDate)
+	return total, nil
 }

@@ -11,14 +11,13 @@ import (
 	"syscall"
 	"time"
 
-
 	"Rest-user-agregator/internal/database"
+	grpcserver "Rest-user-agregator/internal/handlers/grpc"
 	handlers "Rest-user-agregator/internal/handlers/rest"
 	"Rest-user-agregator/internal/middleware"
 	"Rest-user-agregator/internal/service"
 	"Rest-user-agregator/pkg/logger"
 	pb "Rest-user-agregator/proto/subscription"
-	grpcserver "Rest-user-agregator/internal/handlers/grpc"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -40,8 +39,8 @@ import (
 
 func runServers(svc *service.SubscriptionService, authService *service.AuthService, templateSvc *service.TemplateService) error {
 	// 1. СОЗДАНИЕ СЕРВЕРОВ
-	restServer := createRESTServer(svc, authService)              // настройка REST сервера
-	grpcServer, lis, err := createGRPCServer(svc, templateSvc)    // настройка GRPC сервер
+	restServer := createRESTServer(svc, authService)           // настройка REST сервера
+	grpcServer, lis, err := createGRPCServer(svc, templateSvc) // настройка GRPC сервер
 	if err != nil {
 		return fmt.Errorf("failed to start gPRC server: %w", err)
 	}
@@ -135,56 +134,56 @@ func createRESTServer(svc *service.SubscriptionService, authService *service.Aut
 
 	mux := http.NewServeMux() // Создаем роутер-switch для URL
 
-// ============================================================
-// 1. СТАТИКА И ФРОНТЕНД
-// ============================================================
-// 1. Статика (CSS, JS, картинки)
-mux.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./web/css"))))
-mux.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./web/js"))))
+	// ============================================================
+	// 1. СТАТИКА И ФРОНТЕНД
+	// ============================================================
+	// 1. Статика (CSS, JS, картинки)
+	mux.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir("./web/css"))))
+	mux.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./web/js"))))
 
-// 2. HTML-страницы
-mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-    switch r.URL.Path {
-    case "/", "/index.html":
-        http.ServeFile(w, r, "./web/index.html")
-    case "/templates.html":
-        http.ServeFile(w, r, "./web/templates.html")
-    default:
-        http.NotFound(w, r)
-    }
-})
+	// 2. HTML-страницы
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/", "/index.html":
+			http.ServeFile(w, r, "./web/index.html")
+		case "/templates.html":
+			http.ServeFile(w, r, "./web/templates.html")
+		default:
+			http.NotFound(w, r)
+		}
+	})
 
-// ============================================================
-// 2. ПУБЛИЧНЫЕ ЭНДПОИНТЫ (без авторизации)
-// ============================================================
-mux.HandleFunc("POST /api/register", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.RegistrationHandler)))
-mux.HandleFunc("POST /api/login", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.LoginHandler)))
-mux.HandleFunc("GET /api/config", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.ConfigHandler)))
-mux.HandleFunc("GET /health", middleware.CorsMiddleware(handlers.LoggingMiddleware(handlers.HealthHandler)))
-mux.HandleFunc("GET /swagger/", httpSwagger.WrapHandler)
-mux.Handle("/metrics", promhttp.Handler())
+	// ============================================================
+	// 2. ПУБЛИЧНЫЕ ЭНДПОИНТЫ (без авторизации)
+	// ============================================================
+	mux.HandleFunc("POST /api/register", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.RegistrationHandler)))
+	mux.HandleFunc("POST /api/login", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.LoginHandler)))
+	mux.HandleFunc("GET /api/config", middleware.CorsMiddleware(handlers.LoggingMiddleware(handler.ConfigHandler)))
+	mux.HandleFunc("GET /health", middleware.CorsMiddleware(handlers.LoggingMiddleware(handlers.HealthHandler)))
+	mux.HandleFunc("GET /swagger/", httpSwagger.WrapHandler)
+	mux.Handle("/metrics", promhttp.Handler())
 
-// ============================================================
-// 3. ПОДПИСКИ (требуют авторизацию)
-// ============================================================
-mux.HandleFunc("POST /api/subscriptions", handlers.WrapHandler(handler.CreateSubscriptionHandler))
-mux.HandleFunc("GET /api/subscriptions", handlers.WrapHandler(handler.ListSubscriptionsHandler))
-mux.HandleFunc("GET /api/subscriptions/{id}", handlers.WrapHandler(handler.GetSubscriptionHandler))
-mux.HandleFunc("PUT /api/subscriptions/{id}", handlers.WrapHandler(handler.UpdateSubscriptionHandler))
-mux.HandleFunc("DELETE /api/subscriptions/{id}", handlers.WrapHandler(handler.DeleteSubscriptionHandler))
-mux.HandleFunc("GET /api/subscriptions/total-cost", handlers.WrapHandler(handler.GetTotalCostHandler))
-// СОЗДАЁМ ШАБЛОННЫЙ ХЕНДЛЕР
-repo := database.NewPostgresRepo()
-templateService := service.NewTemplateService(repo)
-templateHandler := handlers.NewTemplateHandler(templateService)
-// ============================================================
-// 4. ШАБЛОНЫ (требуют авторизацию + проверку роли внутри)
-// ============================================================
-mux.HandleFunc("POST /api/admin/templates", handlers.WrapHandler(templateHandler.CreateTemplateHandler))
-mux.HandleFunc("GET /api/templates", handlers.WrapHandler(templateHandler.ListTemplatesHandler))
-mux.HandleFunc("GET /api/templates/{id}", handlers.WrapHandler(templateHandler.GetTemplateHandler))
-mux.HandleFunc("PUT /api/admin/templates/{id}", handlers.WrapHandler(templateHandler.UpdateTemplateHandler))
-mux.HandleFunc("DELETE /api/admin/templates/{id}", handlers.WrapHandler(templateHandler.DeleteTemplateHandler))
+	// ============================================================
+	// 3. ПОДПИСКИ (требуют авторизацию)
+	// ============================================================
+	mux.HandleFunc("POST /api/subscriptions", handlers.WrapHandler(handler.CreateSubscriptionHandler))
+	mux.HandleFunc("GET /api/subscriptions", handlers.WrapHandler(handler.ListSubscriptionsHandler))
+	mux.HandleFunc("GET /api/subscriptions/{id}", handlers.WrapHandler(handler.GetSubscriptionHandler))
+	mux.HandleFunc("PUT /api/subscriptions/{id}", handlers.WrapHandler(handler.UpdateSubscriptionHandler))
+	mux.HandleFunc("DELETE /api/subscriptions/{id}", handlers.WrapHandler(handler.DeleteSubscriptionHandler))
+	mux.HandleFunc("GET /api/subscriptions/total-cost", handlers.WrapHandler(handler.GetTotalCostHandler))
+	// СОЗДАЁМ ШАБЛОННЫЙ ХЕНДЛЕР
+	repo := database.NewPostgresRepo()
+	templateService := service.NewTemplateService(repo)
+	templateHandler := handlers.NewTemplateHandler(templateService)
+	// ============================================================
+	// 4. ШАБЛОНЫ (требуют авторизацию + проверку роли внутри)
+	// ============================================================
+	mux.HandleFunc("POST /api/admin/templates", handlers.WrapHandler(templateHandler.CreateTemplateHandler))
+	mux.HandleFunc("GET /api/templates", handlers.WrapHandler(templateHandler.ListTemplatesHandler))
+	mux.HandleFunc("GET /api/templates/{id}", handlers.WrapHandler(templateHandler.GetTemplateHandler))
+	mux.HandleFunc("PUT /api/admin/templates/{id}", handlers.WrapHandler(templateHandler.UpdateTemplateHandler))
+	mux.HandleFunc("DELETE /api/admin/templates/{id}", handlers.WrapHandler(templateHandler.DeleteTemplateHandler))
 
 	// ============================================================
 	// 7. ЗАПУСК СЕРВЕРА
@@ -222,7 +221,7 @@ func createGRPCServer(svc *service.SubscriptionService, templateSvc *service.Tem
 	}
 
 	// 2. СОЗДАНИЕ gRPC-ОБРАБОТЧИКА
-	 grpcHandler := grpcserver.NewSubscriptionServer(svc, templateSvc)
+	grpcHandler := grpcserver.NewSubscriptionServer(svc, templateSvc)
 
 	// 3. СОЗДАНИЕ gRPC-СЕРВЕРА
 	grpcServer := grpc.NewServer()

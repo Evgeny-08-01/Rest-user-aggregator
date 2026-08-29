@@ -115,88 +115,90 @@ func LoggingMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
+
 // ConfigHandler — возвращает конфигурацию для фронтенда
 func (h *Handler) ConfigHandler(w http.ResponseWriter, r *http.Request) {
-    port := os.Getenv("SERVER_PORT")
-    if port == "" {
-        port = "8087"
-    }
-    config := map[string]string{
-        "apiBase": "http://localhost:" + port + "/api",
-    }
-    w.Header().Set("Content-Type", "application/json")
-    if err := json.NewEncoder(w).Encode(config); err != nil {
-        logger.Error("Failed to encode config: %v", err)
-        http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-    }
+	port := os.Getenv("SERVER_PORT")
+	if port == "" {
+		port = "8087"
+	}
+	config := map[string]string{
+		"apiBase": "http://localhost:" + port + "/api",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(config); err != nil {
+		logger.Error("Failed to encode config: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 }
+
 // ============================================================
 // wrapHandler — обёртка для маршрутов с middleware
 // ============================================================
 // Применяет стандартные middleware в правильном порядке:
-//   1. AuthMiddleware (авторизация)
-//   2. CorsMiddleware (CORS)
-//   3. MetricsMiddleware (метрики)
-//   4. LoggingMiddleware (логирование)
+//  1. AuthMiddleware (авторизация)
+//  2. CorsMiddleware (CORS)
+//  3. MetricsMiddleware (метрики)
+//  4. LoggingMiddleware (логирование)
+//
 // ============================================================
 func WrapHandler(handler http.HandlerFunc) http.HandlerFunc {
-    // Если требуется — добавляем AuthMiddleware
-    return authentication.AuthMiddleware(
-        middleware.CorsMiddleware(
-            middleware.MetricsMiddleware(
-               LoggingMiddleware(handler))))
+	// Если требуется — добавляем AuthMiddleware
+	return authentication.AuthMiddleware(
+		middleware.CorsMiddleware(
+			middleware.MetricsMiddleware(
+				LoggingMiddleware(handler))))
 }
 
 // mapErrorToStatus — маппер ошибок в HTTP-статусы
 func mapErrorToStatus(err error) (int, string) {
-    if err == nil {
-        return http.StatusOK, ""
-    }
+	if err == nil {
+		return http.StatusOK, ""
+	}
 
-    switch {
-    // ============================================================
-    // 400 Bad Request — ошибки валидации
-    // ============================================================
-   case errors.Is(err, service.ErrInvalidID),
-        errors.Is(err, service.ErrUserIDRequired),
-        errors.Is(err, service.ErrTemplateIDRequired),
-        errors.Is(err, service.ErrStartDateRequired),
-        errors.Is(err, service.ErrEndDateRequired),
-        errors.Is(err, service.ErrInvalidDateRange),
-        errors.Is(err, service.ErrCannotChangeStartDate),
-        errors.Is(err, service.ErrPriceNegative),
-        errors.Is(err, service.ErrServiceNameRequired),
+	switch {
+	// ============================================================
+	// 400 Bad Request — ошибки валидации
+	// ============================================================
+	case errors.Is(err, service.ErrInvalidID),
+		errors.Is(err, service.ErrUserIDRequired),
+		errors.Is(err, service.ErrTemplateIDRequired),
+		errors.Is(err, service.ErrStartDateRequired),
+		errors.Is(err, service.ErrEndDateRequired),
+		errors.Is(err, service.ErrInvalidDateRange),
+		errors.Is(err, service.ErrCannotChangeStartDate),
+		errors.Is(err, service.ErrPriceNegative),
+		errors.Is(err, service.ErrServiceNameRequired),
 		errors.Is(err, service.ErrTemplateAlreadyExists),
-        errors.Is(err, service.ErrTemplateHasSubscriptions),
-		errors.Is(err, service.ErrInvalidDateFormat):  
-        return http.StatusBadRequest, err.Error()
+		errors.Is(err, service.ErrTemplateHasSubscriptions),
+		errors.Is(err, service.ErrInvalidDateFormat):
+		return http.StatusBadRequest, err.Error()
 
-    // ============================================================
-    // 403 Forbidden — нет прав
-    // ============================================================
-    case errors.Is(err, service.ErrPermissionDenied):
-        return http.StatusForbidden, err.Error()
+	// ============================================================
+	// 403 Forbidden — нет прав
+	// ============================================================
+	case errors.Is(err, service.ErrPermissionDenied):
+		return http.StatusForbidden, err.Error()
 
-    // ============================================================
-    // 404 Not Found — ресурс не найден
-    // ============================================================
-    case errors.Is(err, service.ErrTemplateNotFound),
-        errors.Is(err, sql.ErrNoRows):
-        return http.StatusNotFound, err.Error()
+	// ============================================================
+	// 404 Not Found — ресурс не найден
+	// ============================================================
+	case errors.Is(err, service.ErrTemplateNotFound),
+		errors.Is(err, sql.ErrNoRows):
+		return http.StatusNotFound, err.Error()
 
-    // ============================================================
-    // 409 Conflict — конфликт
-    // ============================================================
-    case errors.Is(err, service.ErrTemplateAlreadyExists),
-        errors.Is(err, service.ErrTemplateHasSubscriptions):
-        return http.StatusConflict, err.Error()
+	// ============================================================
+	// 409 Conflict — конфликт
+	// ============================================================
+case errors.Is(err, service.ErrTemplateAlreadyExists),
+    errors.Is(err, service.ErrTemplateHasSubscriptions):
+    return http.StatusConflict, err.Error()
 
-    // ============================================================
-    // 500 Internal Server Error — всё остальное
-    // ============================================================
-    default:
-        logger.Error("Unmapped error: %v", err)
-        return http.StatusInternalServerError, "Internal server error"
-    }
+	// ============================================================
+	// 500 Internal Server Error — всё остальное
+	// ============================================================
+	default:
+		logger.Error("Unmapped error: %v", err)
+		return http.StatusInternalServerError, "Internal server error"
+	}
 }
-

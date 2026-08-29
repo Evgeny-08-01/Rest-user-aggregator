@@ -50,6 +50,7 @@ import (
 // ВАЖНО:
 //   - Если шаблон с таким названием уже существует — БД вернёт ошибку 23505 (duplicate key)
 //   - Название нормализуется в БД через индекс (LOWER(TRIM(...))), в коде не нормализуем
+//
 // ============================================================
 func (r *PostgresRepo) CreateTemplate(ctx context.Context, serviceName string, price int) (int, error) {
 	// Переменная для хранения ID созданного шаблона
@@ -92,11 +93,13 @@ func (r *PostgresRepo) CreateTemplate(ctx context.Context, serviceName string, p
 //   - error: ошибка, если запрос не удался
 //
 // ПРИМЕР ВЫЗОВА:
-//   templates, err := repo.ListTemplates(ctx)
-//   if err != nil { ... }
-//   for _, t := range templates {
-//       fmt.Println(t.ServiceName, t.Price)
-//   }
+//
+//	templates, err := repo.ListTemplates(ctx)
+//	if err != nil { ... }
+//	for _, t := range templates {
+//	    fmt.Println(t.ServiceName, t.Price)
+//	}
+//
 // ============================================================
 func (r *PostgresRepo) ListTemplates(ctx context.Context) ([]models.Template, error) {
 	// SQL-запрос: выбираем все поля, сортируем по ID (от старых к новым)
@@ -148,8 +151,8 @@ func (r *PostgresRepo) ListTemplates(ctx context.Context) ([]models.Template, er
 //   - Ищет шаблон по его ID
 //   - Возвращает nil, если шаблон не найден (без ошибки)
 //   - Используется при:
-//     - Создании подписки (проверить, что шаблон существует)
-//     - Редактировании подписки админом (получить текущие данные шаблона)
+//   - Создании подписки (проверить, что шаблон существует)
+//   - Редактировании подписки админом (получить текущие данные шаблона)
 //
 // ПАРАМЕТРЫ:
 //   - ctx: контекст для отмены операций
@@ -162,6 +165,7 @@ func (r *PostgresRepo) ListTemplates(ctx context.Context) ([]models.Template, er
 // ВАЖНО:
 //   - Возвращаем nil, а не пустую структуру, чтобы чётко обозначить "не найдено"
 //   - Проверка: if template == nil { ... }
+//
 // ============================================================
 func (r *PostgresRepo) GetTemplateByID(ctx context.Context, id int) (*models.Template, error) {
 	// SQL-запрос: выбираем шаблон по ID
@@ -204,11 +208,13 @@ func (r *PostgresRepo) GetTemplateByID(ctx context.Context, id int) (*models.Tem
 //   - error: ошибка, если запрос не удался
 //
 // ПРИМЕР:
-//   existing, err := repo.GetTemplateByName(ctx, "Яндекс Плюс")
-//   if err != nil { ... }
-//   if existing != nil {
-//       // Шаблон уже существует
-//   }
+//
+//	existing, err := repo.GetTemplateByName(ctx, "Яндекс Плюс")
+//	if err != nil { ... }
+//	if existing != nil {
+//	    // Шаблон уже существует
+//	}
+//
 // ============================================================
 func (r *PostgresRepo) GetTemplateByName(ctx context.Context, serviceName string) (*models.Template, error) {
 	// SQL-запрос: ищем шаблон по нормализованному названию
@@ -252,6 +258,7 @@ func (r *PostgresRepo) GetTemplateByName(ctx context.Context, serviceName string
 // ОСОБЕННОСТИ:
 //   - Если шаблон не найден — возвращает sql.ErrNoRows
 //   - Если новое название уже существует — БД вернёт ошибку 23505 (duplicate key)
+//
 // ============================================================
 func (r *PostgresRepo) UpdateTemplate(ctx context.Context, id int, serviceName string, price int) error {
 	// SQL-запрос: обновляем название и цену по ID
@@ -301,6 +308,7 @@ func (r *PostgresRepo) UpdateTemplate(ctx context.Context, id int, serviceName s
 // ОСОБЕННОСТИ:
 //   - Если шаблон не найден — возвращает sql.ErrNoRows
 //   - Подписки пользователей не удаляются (template_id становится NULL)
+//
 // ============================================================
 // DeleteTemplate — удаляет шаблон, если на него нет подписок
 func (r *PostgresRepo) DeleteTemplate(ctx context.Context, id int) error {

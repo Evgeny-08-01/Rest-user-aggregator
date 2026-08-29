@@ -5,21 +5,17 @@ package main
 // ============================================================
 
 import (
-
 	"fmt"
 	"log"
 	_ "net/http/pprof"
-
 
 	_ "Rest-user-agregator/docs"
 	"Rest-user-agregator/internal/database"
 	"Rest-user-agregator/internal/service"
 	"Rest-user-agregator/pkg/logger"
 
-
 	_ "github.com/lib/pq"
-
-//	httpSwagger "github.com/swaggo/http-swagger"
+	// httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // @title Subscription API
@@ -87,27 +83,24 @@ func run() error {
 	}
 
 	// 7. Создание зависимостей
-svc, authSvc, templateSvc := buildServices()
+	svc, authSvc, templateSvc := buildServices()
 
 	// 8. Запуск серверов
 
-return runServers(svc, authSvc, templateSvc)
+	return runServers(svc, authSvc, templateSvc)
 }
 
 // ============================================================
 // 4.  ФУНКЦИИ
 // ============================================================
 
-
-
 // 7. buildServices — СОЗДАЁТ ВСЕ ЗАВИСИМОСТИ
 // ============================================================
 func buildServices() (*service.SubscriptionService, *service.AuthService, *service.TemplateService) {
-    repo := database.NewPostgresRepo()
-    templateRepo := database.NewPostgresRepo()
-    svc := service.NewSubscriptionService(repo, templateRepo)
-    authService := service.NewAuthService(repo)
-    templateService := service.NewTemplateService(templateRepo)
-    return svc, authService, templateService
+	repo := database.NewPostgresRepo()
+	templateRepo := database.NewPostgresRepo()
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	authService := service.NewAuthService(repo)
+	templateService := service.NewTemplateService(templateRepo)
+	return svc, authService, templateService
 }
-

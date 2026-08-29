@@ -180,79 +180,79 @@ func TestGetUserByEmail_NotFound(t *testing.T) {
 }
 
 func TestDeleteSubscriptionsByUserID(t *testing.T) {
-    t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-    if err := CleanTestTable(); err != nil {
-        t.Fatalf("CleanTestTable failed: %v", err)
-    }
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
+	if err := CleanTestTable(); err != nil {
+		t.Fatalf("CleanTestTable failed: %v", err)
+	}
 
-    repo := NewPostgresRepo()
-    ctx := context.Background()
-    userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
+	repo := NewPostgresRepo()
+	ctx := context.Background()
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
 
-    // Создаём ПЕРВЫЙ шаблон
-    templateID1, err := repo.CreateTemplate(ctx, "TestDelete1", 100)
-    if err != nil {
-        t.Fatalf("CreateTemplate 1 failed: %v", err)
-    }
+	// Создаём ПЕРВЫЙ шаблон
+	templateID1, err := repo.CreateTemplate(ctx, "TestDelete1", 100)
+	if err != nil {
+		t.Fatalf("CreateTemplate 1 failed: %v", err)
+	}
 
-    // Создаём ВТОРОЙ шаблон
-    templateID2, err := repo.CreateTemplate(ctx, "TestDelete2", 200)
-    if err != nil {
-        t.Fatalf("CreateTemplate 2 failed: %v", err)
-    }
+	// Создаём ВТОРОЙ шаблон
+	templateID2, err := repo.CreateTemplate(ctx, "TestDelete2", 200)
+	if err != nil {
+		t.Fatalf("CreateTemplate 2 failed: %v", err)
+	}
 
-    // Создаём ПЕРВУЮ подписку
-    sub1 := models.Subscription{
-        UserID:     userID,
-        TemplateID: templateID1,
-        StartDate:  "01-2025",
-    }
-    startDate, _ := time.Parse("01-2006", sub1.StartDate)
-    _, err = repo.CreateSubscription(ctx, sub1, startDate, nil)
-    if err != nil {
-        t.Fatalf("CreateSubscription 1 failed: %v", err)
-    }
+	// Создаём ПЕРВУЮ подписку
+	sub1 := models.Subscription{
+		UserID:     userID,
+		TemplateID: templateID1,
+		StartDate:  "01-2025",
+	}
+	startDate, _ := time.Parse("01-2006", sub1.StartDate)
+	_, err = repo.CreateSubscription(ctx, sub1, startDate, nil)
+	if err != nil {
+		t.Fatalf("CreateSubscription 1 failed: %v", err)
+	}
 
-    // Создаём ВТОРУЮ подписку (с другим шаблоном)
-    sub2 := models.Subscription{
-        UserID:     userID,
-        TemplateID: templateID2,
-        StartDate:  "02-2025",
-    }
-    startDate2, _ := time.Parse("01-2006", sub2.StartDate)
-    _, err = repo.CreateSubscription(ctx, sub2, startDate2, nil)
-    if err != nil {
-        t.Fatalf("CreateSubscription 2 failed: %v", err)
-    }
+	// Создаём ВТОРУЮ подписку (с другим шаблоном)
+	sub2 := models.Subscription{
+		UserID:     userID,
+		TemplateID: templateID2,
+		StartDate:  "02-2025",
+	}
+	startDate2, _ := time.Parse("01-2006", sub2.StartDate)
+	_, err = repo.CreateSubscription(ctx, sub2, startDate2, nil)
+	if err != nil {
+		t.Fatalf("CreateSubscription 2 failed: %v", err)
+	}
 
-    // Проверяем, что создалось 2 подписки
-    list, err := repo.ListSubscriptions(ctx, "", 10, 0)
-    if err != nil {
-        t.Fatalf("ListSubscriptions failed: %v", err)
-    }
-    if len(list) != 2 {
-        t.Fatalf("Expected 2 subscriptions, got %d", len(list))
-    }
+	// Проверяем, что создалось 2 подписки
+	list, err := repo.ListSubscriptions(ctx, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListSubscriptions failed: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("Expected 2 subscriptions, got %d", len(list))
+	}
 
-    // Удаляем все подписки пользователя
-    err = DeleteSubscriptionsByUserID(userID)
-    if err != nil {
-        t.Fatalf("DeleteSubscriptionsByUserID failed: %v", err)
-    }
+	// Удаляем все подписки пользователя
+	err = DeleteSubscriptionsByUserID(userID)
+	if err != nil {
+		t.Fatalf("DeleteSubscriptionsByUserID failed: %v", err)
+	}
 
-    // Проверяем, что подписок не осталось
-    list, err = repo.ListSubscriptions(ctx, "", 10, 0)
-    if err != nil {
-        t.Fatalf("ListSubscriptions failed: %v", err)
-    }
-    if len(list) != 0 {
-        t.Errorf("Expected 0 subscriptions, got %d", len(list))
-    }
+	// Проверяем, что подписок не осталось
+	list, err = repo.ListSubscriptions(ctx, "", 10, 0)
+	if err != nil {
+		t.Fatalf("ListSubscriptions failed: %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("Expected 0 subscriptions, got %d", len(list))
+	}
 }
 
 func TestGetDB(t *testing.T) {

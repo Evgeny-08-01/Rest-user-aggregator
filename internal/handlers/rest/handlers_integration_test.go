@@ -67,41 +67,40 @@ func TestMain(m *testing.M) {
 }
 
 func setupTestHandler() (*Handler, *TemplateHandler) {
-    repo := database.NewPostgresRepo()
-    templateSvc := service.NewTemplateService(repo)
-    svc := service.NewSubscriptionService(repo, repo)
-    return NewHandler(svc, nil), NewTemplateHandler(templateSvc)
+	repo := database.NewPostgresRepo()
+	templateSvc := service.NewTemplateService(repo)
+	svc := service.NewSubscriptionService(repo, repo)
+	return NewHandler(svc, nil), NewTemplateHandler(templateSvc)
 }
 
 // ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ТЕСТОВ
 // ============================================================
 
-// addAdminContext — добавляет роль admin и стандартный userID 
+// addAdminContext — добавляет роль admin и стандартный userID
 // (используется в большинстве тестов)
 func addAdminContext(req *http.Request) *http.Request {
-    ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
-    ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
-    return req.WithContext(ctx)
+	ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+	ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
+	return req.WithContext(ctx)
 }
 
 // addAdminContextWithUser — добавляет роль admin и произвольный userID
 // (используется в тестах, где нужно создать подписки для разных пользователей)
 func addAdminContextWithUser(req *http.Request, userID string) *http.Request {
-    ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
-    ctx = context.WithValue(ctx, authentication.UserIDKey, userID)
-    return req.WithContext(ctx)
+	ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+	ctx = context.WithValue(ctx, authentication.UserIDKey, userID)
+	return req.WithContext(ctx)
 }
 
 // addTestContext — добавляет произвольные userID и role в контекст
 // (используется для имитации авторизованного пользователя)
 func addTestContext(req *http.Request, userID, role string) *http.Request {
-    ctx := req.Context()
-    ctx = context.WithValue(ctx, authentication.UserIDKey, userID)
-    ctx = context.WithValue(ctx, authentication.RoleKey, role)
-    return req.WithContext(ctx)
+	ctx := req.Context()
+	ctx = context.WithValue(ctx, authentication.UserIDKey, userID)
+	ctx = context.WithValue(ctx, authentication.RoleKey, role)
+	return req.WithContext(ctx)
 }
-
 
 func createTestUser(t *testing.T, userID string) string {
 	db := database.GetDB()
@@ -175,7 +174,7 @@ func TestCreateSubscriptionHandler(t *testing.T) {
 
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	createTestUser(t, userID)
-  handler, templateHandler := setupTestHandler()
+	handler, templateHandler := setupTestHandler()
 
 	// 1. Создаём шаблон через API
 	templateBody := `{"service_name":"TestTemplate","price":100}`
@@ -248,7 +247,7 @@ func TestGetSubscriptionHandler(t *testing.T) {
 
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	createTestUser(t, userID)
-    handler, templateHandler := setupTestHandler()
+	handler, templateHandler := setupTestHandler()
 
 	// 1. Создаём шаблон
 	templateBody := `{"service_name":"TestGet","price":100}`
@@ -326,71 +325,71 @@ func TestGetSubscriptionHandler(t *testing.T) {
 // 3. ТЕСТ: ОБНОВЛЕНИЕ ПОДПИСКИ
 // ============================================================
 func TestUpdateSubscriptionHandler(t *testing.T) {
-    t.Cleanup(func() {
-        if err := database.CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-    if err := database.CleanTestTable(); err != nil {
-        t.Fatalf("Cannot continue test without clean table")
-    }
-    t.Log("Table cleaned successfully")
+	t.Cleanup(func() {
+		if err := database.CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
+	if err := database.CleanTestTable(); err != nil {
+		t.Fatalf("Cannot continue test without clean table")
+	}
+	t.Log("Table cleaned successfully")
 
-    userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
-    handler, templateHandler := setupTestHandler()
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
+	handler, templateHandler := setupTestHandler()
 
-    templateBody := `{"service_name":"BeforeUpdate","price":100}`
-    req := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody)))
-    req = addAdminContext(req)
-    w := httptest.NewRecorder()
-    templateHandler.CreateTemplateHandler(w, req)
-    if w.Code != http.StatusCreated {
-        t.Fatalf("Failed to create template: %d", w.Code)
-    }
-    var templateResp map[string]int
-    if err := json.NewDecoder(w.Body).Decode(&templateResp); err != nil {
-        t.Fatalf("Failed to decode template response: %v", err)
-    }
-    templateID := templateResp["id"]
+	templateBody := `{"service_name":"BeforeUpdate","price":100}`
+	req := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody)))
+	req = addAdminContext(req)
+	w := httptest.NewRecorder()
+	templateHandler.CreateTemplateHandler(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Failed to create template: %d", w.Code)
+	}
+	var templateResp map[string]int
+	if err := json.NewDecoder(w.Body).Decode(&templateResp); err != nil {
+		t.Fatalf("Failed to decode template response: %v", err)
+	}
+	templateID := templateResp["id"]
 
-    createBody := fmt.Sprintf(`{"template_id":%d,"start_date":"09-2026"}`, templateID)
-    req = httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
-    req = addAdminContext(req)
-    w = httptest.NewRecorder()
-    handler.CreateSubscriptionHandler(w, req)
-    if w.Code != http.StatusCreated {
-        t.Fatalf("Failed to create subscription: %d", w.Code)
-    }
-    var resp map[string]int
-    if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-        t.Fatalf("Failed to decode response: %v", err)
-    }
-    id := resp["id"]
+	createBody := fmt.Sprintf(`{"template_id":%d,"start_date":"09-2026"}`, templateID)
+	req = httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
+	req = addAdminContext(req)
+	w = httptest.NewRecorder()
+	handler.CreateSubscriptionHandler(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Failed to create subscription: %d", w.Code)
+	}
+	var resp map[string]int
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	id := resp["id"]
 
-    t.Run("success", func(t *testing.T) {
-    // ✅ Добавлен user_id
-    updateBody := fmt.Sprintf(`{"template_id":%d,"service_name":"BeforeUpdate","user_id":"%s","start_date":"08-2027","end_date":"12-2027"}`, templateID, userID)
-    req := httptest.NewRequest("PUT", "/api/subscriptions/{id}", bytes.NewReader([]byte(updateBody)))
-    req = addAdminContext(req)
-    req.SetPathValue("id", strconv.Itoa(id))
-    w := httptest.NewRecorder()
-    handler.UpdateSubscriptionHandler(w, req)
-    if w.Code != http.StatusOK {
-        t.Errorf("got %d, want %d", w.Code, http.StatusOK)
-    }
-})
+	t.Run("success", func(t *testing.T) {
+		// ✅ Добавлен user_id
+		updateBody := fmt.Sprintf(`{"template_id":%d,"service_name":"BeforeUpdate","user_id":"%s","start_date":"08-2027","end_date":"12-2027"}`, templateID, userID)
+		req := httptest.NewRequest("PUT", "/api/subscriptions/{id}", bytes.NewReader([]byte(updateBody)))
+		req = addAdminContext(req)
+		req.SetPathValue("id", strconv.Itoa(id))
+		w := httptest.NewRecorder()
+		handler.UpdateSubscriptionHandler(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("got %d, want %d", w.Code, http.StatusOK)
+		}
+	})
 
-    t.Run("invalid id", func(t *testing.T) {
-        req := httptest.NewRequest("PUT", "/api/subscriptions/{id}", bytes.NewReader([]byte(`{"start_date":"07-2025"}`)))
-        req = addAdminContext(req)
-        req.SetPathValue("id", "abc")
-        w := httptest.NewRecorder()
-        handler.UpdateSubscriptionHandler(w, req)
-        if w.Code != http.StatusBadRequest {
-            t.Errorf("got %d, want %d", w.Code, http.StatusBadRequest)
-        }
-    })
+	t.Run("invalid id", func(t *testing.T) {
+		req := httptest.NewRequest("PUT", "/api/subscriptions/{id}", bytes.NewReader([]byte(`{"start_date":"07-2025"}`)))
+		req = addAdminContext(req)
+		req.SetPathValue("id", "abc")
+		w := httptest.NewRecorder()
+		handler.UpdateSubscriptionHandler(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("got %d, want %d", w.Code, http.StatusBadRequest)
+		}
+	})
 }
 
 // ============================================================
@@ -409,7 +408,7 @@ func TestDeleteSubscriptionHandler(t *testing.T) {
 
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	createTestUser(t, userID)
-handler, templateHandler := setupTestHandler()
+	handler, templateHandler := setupTestHandler()
 
 	templateBody := `{"service_name":"ToDelete","price":100}`
 	req := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody)))
@@ -478,7 +477,7 @@ func TestListSubscriptionsHandler(t *testing.T) {
 
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	createTestUser(t, userID)
-handler, templateHandler := setupTestHandler()
+	handler, templateHandler := setupTestHandler()
 
 	templateBody := `{"service_name":"ListTest","price":100}`
 	req := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody)))
@@ -493,50 +492,49 @@ handler, templateHandler := setupTestHandler()
 		t.Fatalf("Failed to decode template response: %v", err)
 	}
 
+	// Шаблон 1
+	templateBody1 := `{"service_name":"ListTest1","price":100}`
+	req1 := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody1)))
+	req1 = addAdminContext(req1)
+	w1 := httptest.NewRecorder()
+	templateHandler.CreateTemplateHandler(w1, req1)
+	if w1.Code != http.StatusCreated {
+		t.Fatalf("Failed to create template 1: %d", w1.Code)
+	}
+	var templateResp1 map[string]int
+	json.NewDecoder(w1.Body).Decode(&templateResp1)
+	templateID1 := templateResp1["id"]
 
-// Шаблон 1
-templateBody1 := `{"service_name":"ListTest1","price":100}`
-req1 := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody1)))
-req1 = addAdminContext(req1)
-w1 := httptest.NewRecorder()
-templateHandler.CreateTemplateHandler(w1, req1)
-if w1.Code != http.StatusCreated {
-    t.Fatalf("Failed to create template 1: %d", w1.Code)
-}
-var templateResp1 map[string]int
-json.NewDecoder(w1.Body).Decode(&templateResp1)
-templateID1 := templateResp1["id"]
+	createBody1 := fmt.Sprintf(`{"template_id":%d,"start_date":"09-2026"}`, templateID1)
+	reqCreate1 := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody1)))
+	reqCreate1 = addAdminContext(reqCreate1)
+	wCreate1 := httptest.NewRecorder()
+	handler.CreateSubscriptionHandler(wCreate1, reqCreate1)
+	if wCreate1.Code != http.StatusCreated {
+		t.Fatalf("Failed to create subscription 1: %d", wCreate1.Code)
+	}
 
-createBody1 := fmt.Sprintf(`{"template_id":%d,"start_date":"09-2026"}`, templateID1)
-reqCreate1 := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody1)))
-reqCreate1 = addAdminContext(reqCreate1)
-wCreate1 := httptest.NewRecorder()
-handler.CreateSubscriptionHandler(wCreate1, reqCreate1)
-if wCreate1.Code != http.StatusCreated {
-    t.Fatalf("Failed to create subscription 1: %d", wCreate1.Code)
-}
+	// Шаблон 2
+	templateBody2 := `{"service_name":"ListTest2","price":200}`
+	req2 := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody2)))
+	req2 = addAdminContext(req2)
+	w2 := httptest.NewRecorder()
+	templateHandler.CreateTemplateHandler(w2, req2)
+	if w2.Code != http.StatusCreated {
+		t.Fatalf("Failed to create template 2: %d", w2.Code)
+	}
+	var templateResp2 map[string]int
+	json.NewDecoder(w2.Body).Decode(&templateResp2)
+	templateID2 := templateResp2["id"]
 
-// Шаблон 2
-templateBody2 := `{"service_name":"ListTest2","price":200}`
-req2 := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody2)))
-req2 = addAdminContext(req2)
-w2 := httptest.NewRecorder()
-templateHandler.CreateTemplateHandler(w2, req2)
-if w2.Code != http.StatusCreated {
-    t.Fatalf("Failed to create template 2: %d", w2.Code)
-}
-var templateResp2 map[string]int
-json.NewDecoder(w2.Body).Decode(&templateResp2)
-templateID2 := templateResp2["id"]
-
-createBody2 := fmt.Sprintf(`{"template_id":%d,"start_date":"10-2026"}`, templateID2)
-reqCreate2 := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody2)))
-reqCreate2 = addAdminContext(reqCreate2)
-wCreate2 := httptest.NewRecorder()
-handler.CreateSubscriptionHandler(wCreate2, reqCreate2)
-if wCreate2.Code != http.StatusCreated {
-    t.Fatalf("Failed to create subscription 2: %d", wCreate2.Code)
-}
+	createBody2 := fmt.Sprintf(`{"template_id":%d,"start_date":"10-2026"}`, templateID2)
+	reqCreate2 := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody2)))
+	reqCreate2 = addAdminContext(reqCreate2)
+	wCreate2 := httptest.NewRecorder()
+	handler.CreateSubscriptionHandler(wCreate2, reqCreate2)
+	if wCreate2.Code != http.StatusCreated {
+		t.Fatalf("Failed to create subscription 2: %d", wCreate2.Code)
+	}
 
 	t.Run("success", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/subscriptions", http.NoBody)
@@ -551,8 +549,8 @@ if wCreate2.Code != http.StatusCreated {
 			t.Fatalf("Failed to decode list: %v", err)
 		}
 		if len(list) != 2 {
-    t.Errorf("expected 2 subscriptions, got %d", len(list))
-}
+			t.Errorf("expected 2 subscriptions, got %d", len(list))
+		}
 	})
 }
 
@@ -572,7 +570,7 @@ func TestGetTotalCostHandler(t *testing.T) {
 
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	createTestUser(t, userID)
-handler, templateHandler := setupTestHandler()
+	handler, templateHandler := setupTestHandler()
 
 	// Создаём шаблон
 	templateBody := `{"service_name":"CostTest","price":100}`
@@ -638,7 +636,7 @@ func TestListSubscriptionsHandler_UserSeesOwn(t *testing.T) {
 	userID2 := "550e8400-e29b-41d4-a716-446655440001"
 	createTestUser(t, userID1)
 	createTestUser(t, userID2)
-handler, templateHandler := setupTestHandler()
+	handler, templateHandler := setupTestHandler()
 
 	templateBody := `{"service_name":"UserTest","price":100}`
 	req := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody)))
@@ -685,62 +683,62 @@ handler, templateHandler := setupTestHandler()
 }
 
 func TestListSubscriptionsHandler_AdminSeesAll(t *testing.T) {
-    t.Cleanup(func() {
-        if err := database.CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-    if err := database.CleanTestTable(); err != nil {
-        t.Fatalf("Failed to clean table: %v", err)
-    }
-    t.Log("Table cleaned successfully")
+	t.Cleanup(func() {
+		if err := database.CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
+	if err := database.CleanTestTable(); err != nil {
+		t.Fatalf("Failed to clean table: %v", err)
+	}
+	t.Log("Table cleaned successfully")
 
-    userID1 := "550e8400-e29b-41d4-a716-446655440000"
-    userID2 := "550e8400-e29b-41d4-a716-446655440001"
-    createTestUser(t, userID1)
-    createTestUser(t, userID2)
-    handler, templateHandler := setupTestHandler()
+	userID1 := "550e8400-e29b-41d4-a716-446655440000"
+	userID2 := "550e8400-e29b-41d4-a716-446655440001"
+	createTestUser(t, userID1)
+	createTestUser(t, userID2)
+	handler, templateHandler := setupTestHandler()
 
-    templateBody := `{"service_name":"AdminTest","price":100}`
-    req := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody)))
-    req = addAdminContext(req)
-    w := httptest.NewRecorder()
-    templateHandler.CreateTemplateHandler(w, req)
-    if w.Code != http.StatusCreated {
-        t.Fatalf("Failed to create template: %d", w.Code)
-    }
-    var templateResp map[string]int
-    if err := json.NewDecoder(w.Body).Decode(&templateResp); err != nil {
-        t.Fatalf("Failed to decode template response: %v", err)
-    }
-    templateID := templateResp["id"]
+	templateBody := `{"service_name":"AdminTest","price":100}`
+	req := httptest.NewRequest("POST", "/api/admin/templates", bytes.NewReader([]byte(templateBody)))
+	req = addAdminContext(req)
+	w := httptest.NewRecorder()
+	templateHandler.CreateTemplateHandler(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Failed to create template: %d", w.Code)
+	}
+	var templateResp map[string]int
+	if err := json.NewDecoder(w.Body).Decode(&templateResp); err != nil {
+		t.Fatalf("Failed to decode template response: %v", err)
+	}
+	templateID := templateResp["id"]
 
-    // ✅ Исправлено: используем addAdminContextWithUser для создания подписок
-    for _, uid := range []string{userID1, userID2} {
-        createBody := fmt.Sprintf(`{"template_id":%d,"start_date":"09-2026"}`, templateID)
-        req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
-        req = addAdminContextWithUser(req, uid)  // ← передаём правильный userID
-        w := httptest.NewRecorder()
-        handler.CreateSubscriptionHandler(w, req)
-        if w.Code != http.StatusCreated {
-            t.Fatalf("failed to create subscription for %s: %d", uid, w.Code)
-        }
-    }
+	// ✅ Исправлено: используем addAdminContextWithUser для создания подписок
+	for _, uid := range []string{userID1, userID2} {
+		createBody := fmt.Sprintf(`{"template_id":%d,"start_date":"09-2026"}`, templateID)
+		req := httptest.NewRequest("POST", "/api/subscriptions", bytes.NewReader([]byte(createBody)))
+		req = addAdminContextWithUser(req, uid) // ← передаём правильный userID
+		w := httptest.NewRecorder()
+		handler.CreateSubscriptionHandler(w, req)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("failed to create subscription for %s: %d", uid, w.Code)
+		}
+	}
 
-    // ✅ Исправлено: админ получает список, используя addAdminContext
-    req = httptest.NewRequest("GET", "/api/subscriptions", http.NoBody)
-    req = addAdminContext(req)  // ← админ видит все подписки
-    w = httptest.NewRecorder()
-    handler.ListSubscriptionsHandler(w, req)
+	// ✅ Исправлено: админ получает список, используя addAdminContext
+	req = httptest.NewRequest("GET", "/api/subscriptions", http.NoBody)
+	req = addAdminContext(req) // ← админ видит все подписки
+	w = httptest.NewRecorder()
+	handler.ListSubscriptionsHandler(w, req)
 
-    if w.Code != http.StatusOK {
-        t.Fatalf("expected 200, got %d", w.Code)
-    }
-    var list []models.Subscription
-    if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
-        t.Fatalf("failed to decode response: %v", err)
-    }
-    if len(list) != 2 {
-        t.Errorf("expected 2 subscriptions for admin, got %d", len(list))
-    }
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var list []models.Subscription
+	if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(list) != 2 {
+		t.Errorf("expected 2 subscriptions for admin, got %d", len(list))
+	}
 }

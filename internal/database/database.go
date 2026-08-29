@@ -128,14 +128,15 @@ func NewPostgresRepo() *PostgresRepo {
 func GetDB() *sql.DB {
 	return db
 }
-/////////////////////// функции под тесты/////////////////////////////////////
-func CreateTestTable() error {
-    if db == nil {
-        return errors.New("database not initialized")
-    }
 
-    // 1. Создаём users
-    _, err := db.Exec(`
+// ///////////////////// функции под тесты/////////////////////////////////////
+func CreateTestTable() error {
+	if db == nil {
+		return errors.New("database not initialized")
+	}
+
+	// 1. Создаём users
+	_, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS users (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             email TEXT UNIQUE NOT NULL,
@@ -144,26 +145,26 @@ func CreateTestTable() error {
             created_at TIMESTAMP DEFAULT NOW()
         )
     `)
-    if err != nil {
-        logger.Error("CreateTestTable: failed to create users: %v", err)
-        return err
-    }
+	if err != nil {
+		logger.Error("CreateTestTable: failed to create users: %v", err)
+		return err
+	}
 
-    // 2. Создаём subscription_templates
-    _, err = db.Exec(`
+	// 2. Создаём subscription_templates
+	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS subscription_templates (
             id SERIAL PRIMARY KEY,
             service_name TEXT NOT NULL,
             price INTEGER NOT NULL CHECK (price >= 0)
         )
     `)
-    if err != nil {
-        logger.Error("CreateTestTable: failed to create subscription_templates: %v", err)
-        return err
-    }
+	if err != nil {
+		logger.Error("CreateTestTable: failed to create subscription_templates: %v", err)
+		return err
+	}
 
-    // 3. Создаём subscriptions (правильная структура, без service_name и price)
-    _, err = db.Exec(`
+	// 3. Создаём subscriptions (правильная структура, без service_name и price)
+	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS subscriptions (
             id SERIAL PRIMARY KEY,
             user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -173,25 +174,25 @@ func CreateTestTable() error {
             UNIQUE (user_id, template_id)
         )
     `)
-    if err != nil {
-        logger.Error("CreateTestTable: failed to create subscriptions: %v", err)
-        return err
-    }
+	if err != nil {
+		logger.Error("CreateTestTable: failed to create subscriptions: %v", err)
+		return err
+	}
 
-    // 4. Создаём cache_control_user
-    _, err = db.Exec(`
+	// 4. Создаём cache_control_user
+	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS cache_control_user (
             user_id UUID PRIMARY KEY,
             version INT NOT NULL DEFAULT 1
         )
     `)
-    if err != nil {
-        logger.Error("CreateTestTable: failed to create cache_control_user: %v", err)
-        return err
-    }
+	if err != nil {
+		logger.Error("CreateTestTable: failed to create cache_control_user: %v", err)
+		return err
+	}
 
-    logger.Debug("CreateTestTable: all tables created or already exists")
-    return nil
+	logger.Debug("CreateTestTable: all tables created or already exists")
+	return nil
 }
 
 // DropTestTable — удаляет тестовые таблицы, если они существуют

@@ -1,4 +1,5 @@
 //go:build integration
+
 package main
 
 import (
@@ -13,11 +14,13 @@ import (
 
 	"github.com/joho/godotenv"
 )
+
 var (
-    svc         *service.SubscriptionService
-    authSvc     *service.AuthService
-    templateSvc *service.TemplateService  // ← добавить
+	svc         *service.SubscriptionService
+	authSvc     *service.AuthService
+	templateSvc *service.TemplateService // ← добавить
 )
+
 // ============================================================
 // 1. ПРОВЕРКА ЗАВИСИМОСТЕЙ (выполняется ПЕРВОЙ!)
 // ============================================================
@@ -25,29 +28,29 @@ func Test0Dependencies(t *testing.T) {
 	testutils.CheckAllDependencies(t, 15*time.Second, "8087", "50051")
 }
 func TestMain(m *testing.M) {
-// ✅ Загружаем .env.test для тестов
-    if err := godotenv.Load("../../.env.test"); err != nil {
-        logger.Warn("[WARN] .env.test not found, using default values")
-    }
-// ✅ ИНИЦИАЛИЗАЦИЯ REDIS для тестирования
-    if err := initRedis(); err != nil {
-        logger.Warn("Redis not available, tests will continue without cache: %v", err)
-    }
-// ✅ ИНИЦИАЛИЗАЦИЯ БД для тестов
-    dbPath := os.Getenv("DB_PATH")
-    if dbPath == "" {
-        panic("DB_PATH not set")
-    }
-	logger.Info("DB_PATH not set dbPath:%s",dbPath)
-    if err := database.Init(dbPath); err != nil {
-        panic("Failed to init DB: " + err.Error())
-    }
+	// ✅ Загружаем .env.test для тестов
+	if err := godotenv.Load("../../.env.test"); err != nil {
+		logger.Warn("[WARN] .env.test not found, using default values")
+	}
+	// ✅ ИНИЦИАЛИЗАЦИЯ REDIS для тестирования
+	if err := initRedis(); err != nil {
+		logger.Warn("Redis not available, tests will continue without cache: %v", err)
+	}
+	// ✅ ИНИЦИАЛИЗАЦИЯ БД для тестов
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		panic("DB_PATH not set")
+	}
+	logger.Info("DB_PATH not set dbPath:%s", dbPath)
+	if err := database.Init(dbPath); err != nil {
+		panic("Failed to init DB: " + err.Error())
+	}
 
-repo := database.NewPostgresRepo()
-templateRepo := database.NewPostgresRepo()
-svc = service.NewSubscriptionService(repo, templateRepo)
-templateSvc = service.NewTemplateService(templateRepo)
-authSvc = service.NewAuthService(repo)
+	repo := database.NewPostgresRepo()
+	templateRepo := database.NewPostgresRepo()
+	svc = service.NewSubscriptionService(repo, templateRepo)
+	templateSvc = service.NewTemplateService(templateRepo)
+	authSvc = service.NewAuthService(repo)
 
 	// Запуск тестов
 	code := m.Run()
@@ -58,6 +61,7 @@ authSvc = service.NewAuthService(repo)
 
 	os.Exit(code)
 }
+
 // ============================================================
 // ТЕСТЫ ДЛЯ ФУНКЦИЙ СОЗДАНИЯ СЕРВЕРОВ
 // ============================================================
@@ -94,22 +98,22 @@ func TestCreateRESTServerWithCustomPort(t *testing.T) {
 }
 
 func TestCreateGRPCServer(t *testing.T) {
-    srv, lis, err := createGRPCServer(svc, templateSvc)
-    
-    // ДОБАВИТЬ: закрываем listener после теста
-    if lis != nil {
-        defer lis.Close()
-    }
-    
-    if err != nil {
-        t.Errorf("createGRPCServer failed: %v", err)
-    }
-    if srv == nil {
-        t.Error("gRPC server is nil")
-    }
-    if lis == nil {
-        t.Error("gRPC listener is nil")
-    }
+	srv, lis, err := createGRPCServer(svc, templateSvc)
+
+	// ДОБАВИТЬ: закрываем listener после теста
+	if lis != nil {
+		defer lis.Close()
+	}
+
+	if err != nil {
+		t.Errorf("createGRPCServer failed: %v", err)
+	}
+	if srv == nil {
+		t.Error("gRPC server is nil")
+	}
+	if lis == nil {
+		t.Error("gRPC listener is nil")
+	}
 }
 func TestCreateGRPCServerWithCustomPort(t *testing.T) {
 	oldPort := os.Getenv("GRPC_PORT")
@@ -200,7 +204,6 @@ func TestInitRedisError(t *testing.T) {
 // ТЕСТЫ ДЛЯ ЛОГГЕРА
 // ============================================================
 
-
 // ============================================================
 // ТЕСТЫ ДЛЯ shouldRollback
 // ============================================================
@@ -208,50 +211,50 @@ func TestInitRedisError(t *testing.T) {
 // main_integration_test.go
 
 func TestRunWithContext(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-    errCh := make(chan error, 1)
-    go func() {
-        errCh <- runWithContext(ctx)
-    }()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runWithContext(ctx)
+	}()
 
-    select {
-    case err := <-errCh:
-        if err != nil {
-            t.Logf("runWithContext() error: %v", err)
-        }
-        t.Log("✅ runWithContext() stopped gracefully")
-    case <-ctx.Done():
-        t.Log("⏰ Timeout (CI may be slow)")
-    }
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Logf("runWithContext() error: %v", err)
+		}
+		t.Log("✅ runWithContext() stopped gracefully")
+	case <-ctx.Done():
+		t.Log("⏰ Timeout (CI may be slow)")
+	}
 }
 
 func TestRunServersWithContext(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-    errCh := make(chan error, 1)
-    go func() {
-        errCh <- runServersWithContext(ctx, svc, authSvc, templateSvc)
-    }()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runServersWithContext(ctx, svc, authSvc, templateSvc)
+	}()
 
-    select {
-    case err := <-errCh:
-        if err != nil {
-            t.Logf("runServersWithContext() error: %v", err)
-        }
-        t.Log("✅ runServersWithContext() stopped gracefully")
-    case <-ctx.Done():
-        t.Log("⏰ Timeout (CI may be slow)")
-    }
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Logf("runServersWithContext() error: %v", err)
+		}
+		t.Log("✅ runServersWithContext() stopped gracefully")
+	case <-ctx.Done():
+		t.Log("⏰ Timeout (CI may be slow)")
+	}
 }
 func TestBuildServices(t *testing.T) {
-   _, a, ts := buildServices()
-if ts == nil {
-    t.Error("TemplateService is nil")
-}
-    if a == nil {
-        t.Error("AuthService is nil")
-    }
+	_, a, ts := buildServices()
+	if ts == nil {
+		t.Error("TemplateService is nil")
+	}
+	if a == nil {
+		t.Error("AuthService is nil")
+	}
 }

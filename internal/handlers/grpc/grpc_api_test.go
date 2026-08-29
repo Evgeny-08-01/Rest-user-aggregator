@@ -1,4 +1,4 @@
-//g o:build unit
+//go:build unit
 
 package grpcserver
 
@@ -7,21 +7,22 @@ import (
 	"testing"
 	"time"
 
-	pb "Rest-user-agregator/proto/subscription"
 	"Rest-user-agregator/internal/models"
-	"Rest-user-agregator/internal/service"
-	"github.com/stretchr/testify/assert"
 	"Rest-user-agregator/internal/repository"
+	"Rest-user-agregator/internal/service"
+	pb "Rest-user-agregator/proto/subscription"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type mockRepo struct {
-	getByIDFunc       func(ctx context.Context, id int) (*models.Subscription, error)
-	listFunc          func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
-	createFunc        func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
-	updateFunc        func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
-	deleteFunc        func(ctx context.Context, id int) error
-	getTotalCostFunc  func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
-	getCacheUserVersionFunc    func(ctx context.Context, userID string) (int, error)
+	getByIDFunc                   func(ctx context.Context, id int) (*models.Subscription, error)
+	listFunc                      func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
+	createFunc                    func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
+	updateFunc                    func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
+	deleteFunc                    func(ctx context.Context, id int) error
+	getTotalCostFunc              func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
+	getCacheUserVersionFunc       func(ctx context.Context, userID string) (int, error)
 	incrementCacheUserVersionFunc func(ctx context.Context, userID string) error
 }
 
@@ -95,13 +96,13 @@ func TestGetSubscription(t *testing.T) {
 		},
 	}
 
-templateRepo := &repository.MockTemplateRepo{}
-svc := service.NewSubscriptionService(repo, templateRepo)
-templateSvc := service.NewTemplateService(templateRepo)  
-server := NewSubscriptionServer(svc, templateSvc)  
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo)
+	server := NewSubscriptionServer(svc, templateSvc)
 
-    ctx := context.WithValue(context.Background(), "user_id", "test-user")
-    ctx = context.WithValue(ctx, "role", "user")
+	ctx := context.WithValue(context.Background(), "user_id", "test-user")
+	ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.GetRequest{Id: 1}
 	resp, err := server.GetSubscription(ctx, req)
@@ -122,12 +123,12 @@ func TestGetSubscriptions(t *testing.T) {
 		},
 	}
 
-templateRepo := &repository.MockTemplateRepo{}
-svc := service.NewSubscriptionService(repo, templateRepo)
-templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
-server := NewSubscriptionServer(svc, templateSvc)  
-ctx := context.WithValue(context.Background(), "user_id", "test-user")
-ctx = context.WithValue(ctx, "role", "user")
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
+	ctx := context.WithValue(context.Background(), "user_id", "test-user")
+	ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.GetSubscriptionsRequest{Limit: 10, Offset: 0}
 	resp, err := server.GetSubscriptions(ctx, req)
@@ -145,19 +146,19 @@ func TestCreateSubscription(t *testing.T) {
 		},
 	}
 
-templateRepo := &repository.MockTemplateRepo{}
-svc := service.NewSubscriptionService(repo, templateRepo)
-templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
-server := NewSubscriptionServer(svc, templateSvc)  
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
 
 	req := &pb.CreateRequest{
-    TemplateId: 1,
-    UserId:     "test-user",
-    StartDate:  "01-2029",
-    EndDate:    "12-2029",
-}
-    ctx := context.WithValue(context.Background(), "user_id", "test-user")
-    ctx = context.WithValue(ctx, "role", "user")
+		TemplateId: 1,
+		UserId:     "test-user",
+		StartDate:  "01-2029",
+		EndDate:    "12-2029",
+	}
+	ctx := context.WithValue(context.Background(), "user_id", "test-user")
+	ctx = context.WithValue(ctx, "role", "user")
 
 	resp, err := server.CreateSubscription(ctx, req)
 
@@ -167,36 +168,35 @@ server := NewSubscriptionServer(svc, templateSvc)
 }
 
 func TestUpdateSubscription(t *testing.T) {
-    repo := &mockRepo{
-        updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
-            return nil
-        },
-        getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
-            return &models.Subscription{
-                ID:          id,
-                ServiceName: "Test",
-                UserID:      "test-user",  // ← должен совпадать с user_id из контекста
-                StartDate:   "10-2026",
-                EndDate:     "12-2026",
-            }, nil
-        },
-    }
+	repo := &mockRepo{
+		updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
+			return nil
+		},
+		getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
+			return &models.Subscription{
+				ID:          id,
+				ServiceName: "Test",
+				UserID:      "test-user", // ← должен совпадать с user_id из контекста
+				StartDate:   "10-2026",
+				EndDate:     "12-2026",
+			}, nil
+		},
+	}
 
-
-templateRepo := &repository.MockTemplateRepo{}
-svc := service.NewSubscriptionService(repo, templateRepo)
-templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
-server := NewSubscriptionServer(svc, templateSvc)  
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
 
 	req := &pb.UpdateRequest{
-    Id:         1,
-    TemplateId: 1,
-    UserId:     "test-user",
-    StartDate:  "01-2029",
-    EndDate:    "12-2029",
-}
-ctx := context.WithValue(context.Background(), "user_id", "test-user")
-ctx = context.WithValue(ctx, "role", "user")
+		Id:         1,
+		TemplateId: 1,
+		UserId:     "test-user",
+		StartDate:  "01-2029",
+		EndDate:    "12-2029",
+	}
+	ctx := context.WithValue(context.Background(), "user_id", "test-user")
+	ctx = context.WithValue(ctx, "role", "user")
 
 	resp, err := server.UpdateSubscription(ctx, req)
 
@@ -205,25 +205,25 @@ ctx = context.WithValue(ctx, "role", "user")
 }
 
 func TestDeleteSubscription(t *testing.T) {
-    repo := &mockRepo{
-        deleteFunc: func(ctx context.Context, id int) error {
-            return nil
-        },
-        // ✅ Добавить мок GetSubscriptionByID
-        getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
-            return &models.Subscription{
-                ID:          id,
-                ServiceName: "Test",
-                UserID:      "test-user",  // ← должен совпадать с user_id из контекста
-            }, nil
-        },
-    }
-templateRepo := &repository.MockTemplateRepo{}
-svc := service.NewSubscriptionService(repo, templateRepo)
-templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
-server := NewSubscriptionServer(svc, templateSvc)  
-ctx := context.WithValue(context.Background(), "user_id", "test-user")
-ctx = context.WithValue(ctx, "role", "user")
+	repo := &mockRepo{
+		deleteFunc: func(ctx context.Context, id int) error {
+			return nil
+		},
+		// ✅ Добавить мок GetSubscriptionByID
+		getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
+			return &models.Subscription{
+				ID:          id,
+				ServiceName: "Test",
+				UserID:      "test-user", // ← должен совпадать с user_id из контекста
+			}, nil
+		},
+	}
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
+	ctx := context.WithValue(context.Background(), "user_id", "test-user")
+	ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.GetRequest{Id: 1}
 	resp, err := server.DeleteSubscription(ctx, req)
@@ -239,12 +239,12 @@ func TestGetTotalCost(t *testing.T) {
 		},
 	}
 
-templateRepo := &repository.MockTemplateRepo{}
-svc := service.NewSubscriptionService(repo, templateRepo)
-templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
-server := NewSubscriptionServer(svc, templateSvc)  
-ctx := context.WithValue(context.Background(), "user_id", "test-user")
-ctx = context.WithValue(ctx, "role", "user")
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
+	ctx := context.WithValue(context.Background(), "user_id", "test-user")
+	ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.TotalCostRequest{
 		UserId:      "test-user",

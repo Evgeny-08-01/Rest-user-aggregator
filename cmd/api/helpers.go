@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -123,5 +122,5 @@ func runWithContext(ctx context.Context) error {
 	}
 
 	svc, authSvc, templateSvc := buildServices()
-    return runServersWithContext(ctx, svc, authSvc, templateSvc)
+	return runServersWithContext(ctx, svc, authSvc, templateSvc)
 }

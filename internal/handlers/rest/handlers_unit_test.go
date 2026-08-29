@@ -1,4 +1,4 @@
-//g o:build unit
+//go:build unit
 
 package handlers
 
@@ -99,9 +99,9 @@ func TestGet_Mock(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/api/subscriptions/"+tt.id, nil)
-ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
-ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
+			req := httptest.NewRequest("GET", "/api/subscriptions/"+tt.id, http.NoBody)
+			ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+			ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
 			req = req.WithContext(ctx)
 			req.SetPathValue("id", tt.id)
 			w := httptest.NewRecorder()
@@ -116,12 +116,12 @@ ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-
 func TestUpdate_Mock(t *testing.T) {
 	mockRepo := &repository.MockSubRepo{}
 	mockRepo.GetSubByIDMock = func(ctx context.Context, id int) (*models.Subscription, error) {
-    return &models.Subscription{
-        ID:          1,
-        ServiceName: "Test",
-        UserID:      "550e8400-e29b-41d4-a716-446655440000",
-    }, nil
-}
+		return &models.Subscription{
+			ID:          1,
+			ServiceName: "Test",
+			UserID:      "550e8400-e29b-41d4-a716-446655440000",
+		}, nil
+	}
 	mockRepo.UpdateSubMock = func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
 		if sub.ID != 1 {
 			t.Errorf("Expected ID 1, got %d", sub.ID)
@@ -146,11 +146,11 @@ func TestUpdate_Mock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("PUT", "/api/subscriptions/"+tt.id, bytes.NewReader([]byte(tt.body)))
 			req.SetPathValue("id", tt.id)
-ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
-ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000") 
+			ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+			ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
 			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
-	logger.Debug("UpdateSubscriptionHandler: req=%+v", req)		
+			logger.Debug("UpdateSubscriptionHandler: req=%+v", req)
 			handler.UpdateSubscriptionHandler(w, req)
 			if w.Code != tt.wantStatus {
 				t.Errorf("got %d, want %d", w.Code, tt.wantStatus)
@@ -162,12 +162,12 @@ ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-
 func TestDelete_Mock(t *testing.T) {
 	mockRepo := &repository.MockSubRepo{}
 	mockRepo.GetSubByIDMock = func(ctx context.Context, id int) (*models.Subscription, error) {
-    return &models.Subscription{
-        ID:          1,
-        ServiceName: "Test",
-        UserID:      "550e8400-e29b-41d4-a716-446655440000",
-    }, nil
-}
+		return &models.Subscription{
+			ID:          1,
+			ServiceName: "Test",
+			UserID:      "550e8400-e29b-41d4-a716-446655440000",
+		}, nil
+	}
 	mockRepo.DeleteSubMock = func(ctx context.Context, id int) error {
 		return nil
 	}
@@ -186,10 +186,10 @@ func TestDelete_Mock(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("DELETE", "/api/subscriptions/"+tt.id, nil)
+			req := httptest.NewRequest("DELETE", "/api/subscriptions/"+tt.id, http.NoBody)
 			req.SetPathValue("id", tt.id)
-ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
-ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
+			ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+			ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
 			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 			handler.DeleteSubscriptionHandler(w, req)
@@ -223,7 +223,9 @@ func TestList_Mock(t *testing.T) {
 	}
 
 	var list []models.Subscription
-	json.NewDecoder(w.Body).Decode(&list)
+if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
+    t.Errorf("failed to decode response: %v", err)
+}
 	if len(list) != 2 {
 		t.Errorf("expected 2, got %d", len(list))
 	}

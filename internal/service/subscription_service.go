@@ -18,21 +18,21 @@ import (
 //var ErrCannotChangeStartDate = errors.New("cannot change start_date that is today or in the past")
 
 type SubscriptionService struct {
-	repo  repository.SubscriptionRepository
+	repo         repository.SubscriptionRepository
 	templateRepo repository.TemplateRepository
-	cache cache.Cache
+	cache        cache.Cache
 }
 
 // NewSubscriptionService — конструктор сервиса
 func NewSubscriptionService(
-    repo repository.SubscriptionRepository,
-    templateRepo repository.TemplateRepository,
+	repo repository.SubscriptionRepository,
+	templateRepo repository.TemplateRepository,
 ) *SubscriptionService {
-    return &SubscriptionService{
-        repo:         repo,
-        templateRepo: templateRepo,
-        cache:        cache.NewRedisCache(),
-    }
+	return &SubscriptionService{
+		repo:         repo,
+		templateRepo: templateRepo,
+		cache:        cache.NewRedisCache(),
+	}
 }
 
 // GetTotalCost — рассчитывает суммарную стоимость подписок за указанный период.
@@ -41,104 +41,105 @@ func NewSubscriptionService(
 //   - serviceName: фильтр по названию сервиса (опционально)
 //   - startDate: дата начала в формате MM-YYYY (обязательно)
 //   - endDate: дата окончания в формате MM-YYYY (обязательно)
+//
 // Возвращает:
 //   - int: суммарная стоимость
 //   - error: ErrStartDateRequired если startDate пустой
 //   - error: ErrInvalidDateRange если startDate > endDate
 //   - error: ошибки парсинга дат или БД
 func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceName, startDate, endDate string) (int, error) {
-    ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 
-    // ============================================================
-    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
-    // ============================================================
-    if startDate == "" {
-        return 0, ErrStartDateRequired
-    }
-    if endDate == "" {
-        return 0, fmt.Errorf("end_date is required")
-    }
+	// ============================================================
+	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
+	// ============================================================
+	if startDate == "" {
+		return 0, ErrStartDateRequired
+	}
+	if endDate == "" {
+		return 0, fmt.Errorf("end_date is required")
+	}
 
-    // ============================================================
-    // 2. ПАРСИНГ ДАТ
-    // ============================================================
-    startDateTimeDB, err := parseDate(startDate)
-    if err != nil {
-        logger.Warn("GetTotalCost: failed to parse startDate %s: %v", startDate, err)
-        return 0, fmt.Errorf("invalid startDate: %w", err)
-    }
+	// ============================================================
+	// 2. ПАРСИНГ ДАТ
+	// ============================================================
+	startDateTimeDB, err := parseDate(startDate)
+	if err != nil {
+		logger.Warn("GetTotalCost: failed to parse startDate %s: %v", startDate, err)
+		return 0, fmt.Errorf("invalid startDate: %w", err)
+	}
 
-    endDateTimeDB, err := parseEndDate(endDate)
-    if err != nil {
-        logger.Warn("GetTotalCost: failed to parse endDate %s: %v", endDate, err)
-        return 0, fmt.Errorf("invalid endDate: %w", err)
-    }
+	endDateTimeDB, err := parseEndDate(endDate)
+	if err != nil {
+		logger.Warn("GetTotalCost: failed to parse endDate %s: %v", endDate, err)
+		return 0, fmt.Errorf("invalid endDate: %w", err)
+	}
 
-    if err := validateDateRange(startDateTimeDB, endDateTimeDB); err != nil {
-        logger.Warn("GetTotalCost: invalid date range: startDate=%s > endDate=%s", startDate, endDate)
-        return 0, fmt.Errorf("start_date > end_date")
-    }
+	if err := validateDateRange(startDateTimeDB, endDateTimeDB); err != nil {
+		logger.Warn("GetTotalCost: invalid date range: startDate=%s > endDate=%s", startDate, endDate)
+		return 0, fmt.Errorf("start_date > end_date")
+	}
 
-    // ============================================================
-    // 3. АДМИН — КЕШ ОТКЛЮЧАЕМ
-    // ============================================================
-    if userID == "" {
-        logger.Debug("GetTotalCost: admin request (userID empty), skipping cache")
-        return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
-    }
+	// ============================================================
+	// 3. АДМИН — КЕШ ОТКЛЮЧАЕМ
+	// ============================================================
+	if userID == "" {
+		logger.Debug("GetTotalCost: admin request (userID empty), skipping cache")
+		return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+	}
 
-    // ============================================================
-    // 4. ПОЛУЧАЕМ ВЕРСИЮ КЕША
-    // ============================================================
-    version, err := s.repo.GetCacheUserVersion(ctx, userID)
-    if err != nil {
-        logger.Warn("GetTotalCost: failed to get cache version for user %s: %v, skipping cache", userID, err)
-        return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
-    }
+	// ============================================================
+	// 4. ПОЛУЧАЕМ ВЕРСИЮ КЕША
+	// ============================================================
+	version, err := s.repo.GetCacheUserVersion(ctx, userID)
+	if err != nil {
+		logger.Warn("GetTotalCost: failed to get cache version for user %s: %v, skipping cache", userID, err)
+		return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+	}
 
-    // ============================================================
-    // 5. РАБОТА С КЕШЕМ
-    // ============================================================
-    cacheKey := fmt.Sprintf("total:v%d:%s:%s:%s:%s",
-        version,
-        userID,
-        serviceName,
-        startDate,
-        endDate,
-    )
+	// ============================================================
+	// 5. РАБОТА С КЕШЕМ
+	// ============================================================
+	cacheKey := fmt.Sprintf("total:v%d:%s:%s:%s:%s",
+		version,
+		userID,
+		serviceName,
+		startDate,
+		endDate,
+	)
 
-    cachedValue, err := s.cache.Get(ctx, cacheKey)
-    if err == nil && cachedValue > 0 {
-        logger.Debug("GetTotalCost: cache hit for key %s, value=%d", cacheKey, cachedValue)
-        return cachedValue, nil
-    }
+	cachedValue, err := s.cache.Get(ctx, cacheKey)
+	if err == nil && cachedValue > 0 {
+		logger.Debug("GetTotalCost: cache hit for key %s, value=%d", cacheKey, cachedValue)
+		return cachedValue, nil
+	}
 
-    if err != nil && err != redis.Nil {
-        logger.Warn("GetTotalCost: Redis error for key %s: %v, falling back to DB", cacheKey, err)
-    }
+	if err != nil && err != redis.Nil {
+		logger.Warn("GetTotalCost: Redis error for key %s: %v, falling back to DB", cacheKey, err)
+	}
 
-    // ============================================================
-    // 6. КЕШ-ПРОМАХ: ИДЁМ В БД
-    // ============================================================
-    logger.Debug("GetTotalCost: cache miss for key %s, querying DB", cacheKey)
-    total, err := s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
-    if err != nil {
-        logger.Error("GetTotalCost: DB query failed: %v", err)
-        return 0, err
-    }
+	// ============================================================
+	// 6. КЕШ-ПРОМАХ: ИДЁМ В БД
+	// ============================================================
+	logger.Debug("GetTotalCost: cache miss for key %s, querying DB", cacheKey)
+	total, err := s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+	if err != nil {
+		logger.Error("GetTotalCost: DB query failed: %v", err)
+		return 0, err
+	}
 
-    // ============================================================
-    // 7. СОХРАНЯЕМ В КЕШ
-    // ============================================================
-    const ttl = 5 * time.Minute
-    if err := s.cache.Set(ctx, cacheKey, total, ttl); err != nil {
-        logger.Warn("GetTotalCost: failed to cache result for key %s: %v", cacheKey, err)
-    } else {
-        logger.Debug("GetTotalCost: cached result for key %s, total=%d, ttl=%v", cacheKey, total, ttl)
-    }
+	// ============================================================
+	// 7. СОХРАНЯЕМ В КЕШ
+	// ============================================================
+	const ttl = 5 * time.Minute
+	if err := s.cache.Set(ctx, cacheKey, total, ttl); err != nil {
+		logger.Warn("GetTotalCost: failed to cache result for key %s: %v", cacheKey, err)
+	} else {
+		logger.Debug("GetTotalCost: cached result for key %s, total=%d, ttl=%v", cacheKey, total, ttl)
+	}
 
-    return total, nil
+	return total, nil
 }
 
 // CreateSubscription — создаёт новую подписку с полной валидацией
@@ -147,81 +148,83 @@ func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceN
 //   - userID: ID пользователя из JWT (обязательно, не пустой)
 //   - startDate: дата начала в формате MM-YYYY (обязательно)
 //   - endDate: дата окончания в формате MM-YYYY (опционально)
+//
 // Возвращает:
 //   - int: ID созданной подписки
 //   - error: ошибка валидации или БД
 func (s *SubscriptionService) CreateSubscription(ctx context.Context, templateID int, userID string, startDate, endDate string) (int, error) {
-    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
-    // ============================================================
-    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
-    // ============================================================
+	// ============================================================
+	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+	// ============================================================
 
-    if templateID <= 0 {
-        return 0, ErrTemplateIDRequired
-    }
-    if userID == "" {
-        return 0, ErrUserIDRequired
-    }
-    if startDate == "" {
-        return 0, ErrStartDateRequired
-    }
+	if templateID <= 0 {
+		return 0, ErrTemplateIDRequired
+	}
+	if userID == "" {
+		return 0, ErrUserIDRequired
+	}
+	if startDate == "" {
+		return 0, ErrStartDateRequired
+	}
 
-    // ============================================================
-    // 2. БИЗНЕС-ЛОГИКА
-    // ============================================================
+	// ============================================================
+	// 2. БИЗНЕС-ЛОГИКА
+	// ============================================================
 
-    // 2.1. Получаем шаблон
-    template, err := s.templateRepo.GetTemplateByID(ctx, templateID)
-    if err != nil {
-        return 0, fmt.Errorf("%w: %v", ErrTemplateNotFound, err)
-    }
-    if template == nil {
-        return 0, ErrTemplateNotFound
-    }
+	// 2.1. Получаем шаблон
+	template, err := s.templateRepo.GetTemplateByID(ctx, templateID)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrTemplateNotFound, err)
+	}
+	if template == nil {
+		return 0, ErrTemplateNotFound
+	}
 
-    // 2.2. Парсим даты
-    startDateParsed, err := parseDate(startDate)
-    if err != nil {
-        return 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, err.Error())
-    }
-    var endDateParsed *time.Time
-    if endDate != "" {
-        parsed, err := parseDate(endDate)
-        if err != nil {
-            return 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, err.Error())
-        }
-        endDateParsed = &parsed
-    }
+	// 2.2. Парсим даты
+	startDateParsed, err := parseDate(startDate)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, err.Error())
+	}
+	var endDateParsed *time.Time
+	if endDate != "" {
+		parsed, err := parseDate(endDate)
+		if err != nil {
+			return 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, err.Error())
+		}
+		endDateParsed = &parsed
+	}
 
-    // 2.3. Проверяем, что start_date не в прошлом
-    if !canChangeStartDate(startDateParsed) {
-        return 0, ErrCannotChangeStartDate
-    }
+	// 2.3. Проверяем, что start_date не в прошлом
+	if !canChangeStartDate(startDateParsed) {
+		return 0, ErrCannotChangeStartDate
+	}
 
-    // 2.4. Создаём подписку
-    sub := models.Subscription{
-        ServiceName: template.ServiceName,
-        Price:       template.Price,
-        UserID:      userID,
-        TemplateID:  templateID,
-    }
+	// 2.4. Создаём подписку
+	sub := models.Subscription{
+		ServiceName: template.ServiceName,
+		Price:       template.Price,
+		UserID:      userID,
+		TemplateID:  templateID,
+	}
 
-    id, err := s.repo.CreateSubscription(ctx, sub, startDateParsed, endDateParsed)
-    if err != nil && err.Error() == "duplicate" {
-        return 0, ErrTemplateHasSubscriptions
-    }
-    if err != nil {
-        return 0, err
-    }
-    return id, nil
+	id, err := s.repo.CreateSubscription(ctx, sub, startDateParsed, endDateParsed)
+	if err != nil && err.Error() == "duplicate" {
+		return 0, ErrTemplateHasSubscriptions
+	}
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // UpdateSubscription — обновляет подписку с полной валидацией и проверкой прав
 // Параметры:
 //   - sub: обновлённые данные подписки (должен содержать ID, UserID, StartDate, EndDate)
 //   - role: роль текущего пользователя (из JWT)
+//
 // Возвращает:
 //   - error: ErrInvalidID если sub.ID <= 0
 //   - error: ErrUserIDRequired если sub.UserID пустой
@@ -231,69 +234,71 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, templateID
 //   - error: ErrCannotChangeStartDate если start_date в прошлом
 //   - error: другие ошибки (парсинг дат, БД)
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models.Subscription, role string) error {
-    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
-    // ============================================================
-    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
-    // ============================================================
-    if sub.ID <= 0 {
-        return ErrInvalidID
-    }
-    if sub.UserID == "" {
-        return ErrUserIDRequired
-    }
-    if sub.StartDate == "" {
-        return ErrStartDateRequired
-    }
+	// ============================================================
+	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+	// ============================================================
+	if sub.ID <= 0 {
+		return ErrInvalidID
+	}
+	if sub.UserID == "" {
+		return ErrUserIDRequired
+	}
+	if sub.StartDate == "" {
+		return ErrStartDateRequired
+	}
 
-    // ============================================================
-    // 2. БИЗНЕС-ЛОГИКА
-    // ============================================================
+	// ============================================================
+	// 2. БИЗНЕС-ЛОГИКА
+	// ============================================================
 
-    // 2.1. Получаем существующую подписку из БД для проверки владельца
-    existing, err := s.repo.GetSubscriptionByID(ctx, sub.ID)
-    if err != nil {
-        return err
-    }
-    if existing == nil {
-        return sql.ErrNoRows
-    }
+	// 2.1. Получаем существующую подписку из БД для проверки владельца
+	existing, err := s.repo.GetSubscriptionByID(ctx, sub.ID)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return sql.ErrNoRows
+	}
 
-    // 2.2. Проверка прав доступа
-    //     - Админ может обновлять любые подписки
-    //     - Обычный пользователь — только свои
-    if role != "admin" && existing.UserID != sub.UserID {
-        return ErrPermissionDenied
-    }
+	// 2.2. Проверка прав доступа
+	//     - Админ может обновлять любые подписки
+	//     - Обычный пользователь — только свои
+	if role != "admin" && existing.UserID != sub.UserID {
+		return ErrPermissionDenied
+	}
 
-    // 2.3. Парсим даты
-    startDate, err := parseDate(sub.StartDate)
-    if err != nil {
-        return fmt.Errorf("invalid start_date: %w", err)
-    }
-    var endDate *time.Time
-    if sub.EndDate != "" {
-        parsed, err := parseDate(sub.EndDate)
-        if err != nil {
-            return fmt.Errorf("invalid end_date: %w", err)
-        }
-        endDate = &parsed
-    }
+	// 2.3. Парсим даты
+	startDate, err := parseDate(sub.StartDate)
+	if err != nil {
+		return fmt.Errorf("invalid start_date: %w", err)
+	}
+	var endDate *time.Time
+	if sub.EndDate != "" {
+		parsed, err := parseDate(sub.EndDate)
+		if err != nil {
+			return fmt.Errorf("invalid end_date: %w", err)
+		}
+		endDate = &parsed
+	}
 
-    // 2.4. Проверяем, что start_date не в прошлом
-    if !canChangeStartDate(startDate) {
-        return ErrCannotChangeStartDate
-    }
+	// 2.4. Проверяем, что start_date не в прошлом
+	if !canChangeStartDate(startDate) {
+		return ErrCannotChangeStartDate
+	}
 
-    // 2.5. Вызываем репозиторий для обновления
-    return s.repo.UpdateSubscription(ctx, sub, startDate, endDate)
+	// 2.5. Вызываем репозиторий для обновления
+	return s.repo.UpdateSubscription(ctx, sub, startDate, endDate)
 }
+
 // GetSubscriptionByID — получает подписку по ID с полной валидацией и проверкой прав
 // Параметры:
 //   - id: ID подписки (обязательно, > 0)
 //   - userID: ID пользователя из JWT (обязательно, не пустой)
 //   - role: роль пользователя (admin/user)
+//
 // Возвращает:
 //   - *models.Subscription: данные подписки
 //   - error: ErrInvalidID если id <= 0
@@ -301,41 +306,43 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models
 //   - error: ErrPermissionDenied если пользователь не владелец и не админ
 //   - error: другие ошибки БД
 func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int, userID string, role string) (*models.Subscription, error) {
-    // ============================================================
-    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
-    // ============================================================
-    if id <= 0 {
-        return nil, ErrInvalidID
-    }
-    if userID == "" {
-        return nil, ErrUserIDRequired
-    }
+	// ============================================================
+	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+	// ============================================================
+	if id <= 0 {
+		return nil, ErrInvalidID
+	}
+	if userID == "" {
+		return nil, ErrUserIDRequired
+	}
 
-    // ============================================================
-    // 2. БИЗНЕС-ЛОГИКА
-    // ============================================================
+	// ============================================================
+	// 2. БИЗНЕС-ЛОГИКА
+	// ============================================================
 
-    // 2.1. Получаем подписку из репозитория
-    sub, err := s.repo.GetSubscriptionByID(ctx, id)
-    if err != nil {
-        return nil, err
-    }
-    if sub == nil {
-        return nil, nil
-    }
+	// 2.1. Получаем подписку из репозитория
+	sub, err := s.repo.GetSubscriptionByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil {
+		return nil, nil
+	}
 
-    // 2.2. Проверка прав: админ видит всё, обычный пользователь — только свои
-    if role != "admin" && sub.UserID != userID {
-        return nil, ErrPermissionDenied
-    }
+	// 2.2. Проверка прав: админ видит всё, обычный пользователь — только свои
+	if role != "admin" && sub.UserID != userID {
+		return nil, ErrPermissionDenied
+	}
 
-    return sub, nil
+	return sub, nil
 }
+
 // DeleteSubscription — удаляет подписку по ID с полной валидацией и проверкой прав
 // Параметры:
 //   - id: ID подписки (обязательно, > 0)
 //   - userID: ID пользователя из JWT (обязательно, не пустой)
 //   - role: роль пользователя (admin/user)
+//
 // Возвращает:
 //   - error: ErrInvalidID если id <= 0
 //   - error: ErrUserIDRequired если userID пустой
@@ -343,41 +350,41 @@ func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int, u
 //   - error: sql.ErrNoRows если подписка не найдена
 //   - error: другие ошибки БД
 func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int, userID string, role string) error {
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-    // ============================================================
-    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
-    // ============================================================
-    if id <= 0 {
-        return ErrInvalidID
-    }
-    if userID == "" {
-        return ErrUserIDRequired
-    }
+	// ============================================================
+	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+	// ============================================================
+	if id <= 0 {
+		return ErrInvalidID
+	}
+	if userID == "" {
+		return ErrUserIDRequired
+	}
 
-    // ============================================================
-    // 2. БИЗНЕС-ЛОГИКА
-    // ============================================================
+	// ============================================================
+	// 2. БИЗНЕС-ЛОГИКА
+	// ============================================================
 
-    // 2.1. Получаем существующую подписку из БД для проверки владельца
-    existing, err := s.repo.GetSubscriptionByID(ctx, id)
-    if err != nil {
-        return err
-    }
-    if existing == nil {
-        return sql.ErrNoRows
-    }
+	// 2.1. Получаем существующую подписку из БД для проверки владельца
+	existing, err := s.repo.GetSubscriptionByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return sql.ErrNoRows
+	}
 
-    // 2.2. Проверка прав доступа
-    //     - Админ может удалять любые подписки
-    //     - Обычный пользователь — только свои
-    if role != "admin" && existing.UserID != userID {
-        return ErrPermissionDenied
-    }
+	// 2.2. Проверка прав доступа
+	//     - Админ может удалять любые подписки
+	//     - Обычный пользователь — только свои
+	if role != "admin" && existing.UserID != userID {
+		return ErrPermissionDenied
+	}
 
-    // 2.3. Вызываем репозиторий для удаления
-    return s.repo.DeleteSubscription(ctx, id)
+	// 2.3. Вызываем репозиторий для удаления
+	return s.repo.DeleteSubscription(ctx, id)
 }
 
 // ListSubscriptions — получает список подписок с пагинацией и проверкой прав
@@ -386,33 +393,34 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int, us
 //   - role: роль пользователя (admin/user)
 //   - limit: лимит записей
 //   - offset: смещение
+//
 // Возвращает:
 //   - []models.Subscription: список подписок
 //   - error: ErrUserIDRequired если userID пустой и роль не admin
 //   - error: ошибка БД
 func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID, role string, limit, offset int) ([]models.Subscription, error) {
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-    // ============================================================
-    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
-    // ============================================================
-    // Админ может видеть все подписки (userID не нужен)
-    // Обычный пользователь должен иметь userID
-    if role != "admin" && userID == "" {
-        return nil, ErrUserIDRequired
-    }
+	// ============================================================
+	// 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
+	// ============================================================
+	// Админ может видеть все подписки (userID не нужен)
+	// Обычный пользователь должен иметь userID
+	if role != "admin" && userID == "" {
+		return nil, ErrUserIDRequired
+	}
 
-    // ============================================================
-    // 2. БИЗНЕС-ЛОГИКА
-    // ============================================================
-    // Админ видит всё
-    if role == "admin" {
-        return s.repo.ListSubscriptions(ctx, "", limit, offset)
-    }
+	// ============================================================
+	// 2. БИЗНЕС-ЛОГИКА
+	// ============================================================
+	// Админ видит всё
+	if role == "admin" {
+		return s.repo.ListSubscriptions(ctx, "", limit, offset)
+	}
 
-    // Обычный пользователь видит только свои
-    return s.repo.ListSubscriptions(ctx, userID, limit, offset)
+	// Обычный пользователь видит только свои
+	return s.repo.ListSubscriptions(ctx, userID, limit, offset)
 }
 
 // ============================================================
@@ -453,11 +461,12 @@ func (s *SubscriptionService) SetCache(c cache.Cache) {
 }
 
 func canChangeStartDate(startDate time.Time) bool {
-    now := time.Now()
-    start := time.Date(startDate.Year(), startDate.Month(), 1, 0, 0, 0, 0, time.Local)
-    current := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
-    return start.After(current) || start.Equal(current)
+	now := time.Now()
+	start := time.Date(startDate.Year(), startDate.Month(), 1, 0, 0, 0, 0, time.Local)
+	current := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+	return start.After(current) || start.Equal(current)
 }
+
 /*func canChangeStartDate(startDate time.Time) bool {
 	now := time.Now().In(time.Local)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
