@@ -19,9 +19,9 @@ type MockSubRepo struct {
 	IncrementCacheUserVersionMock func(ctx context.Context, userID string) error
 }
 
-func (m *MockSubRepo) CreateSubscription(ctx context.Context, sub *models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
+func (m *MockSubRepo) CreateSubscription(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
 	if m.CreateMock != nil {
-		return m.CreateMock(ctx, *sub, startDate, endDate)
+		return m.CreateMock(ctx, sub, startDate, endDate)
 	}
 	return 0, errors.New("CreateMock not mocked")
 }
