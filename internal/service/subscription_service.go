@@ -3,7 +3,7 @@ package service
 
 import (
 	"context"
-	"errors"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -14,207 +14,264 @@ import (
 
 	"github.com/redis/go-redis/v9"
 )
-	var ErrCannotChangeStartDate = errors.New("cannot change start_date that is today or in the past")
+
+//var ErrCannotChangeStartDate = errors.New("cannot change start_date that is today or in the past")
+
 type SubscriptionService struct {
-    repo repository.SubscriptionRepository
+	repo  repository.SubscriptionRepository
+	templateRepo repository.TemplateRepository
 	cache cache.Cache
 }
-// NewSubscriptionService — конструктор сервиса
 
-func NewSubscriptionService(repo repository.SubscriptionRepository) *SubscriptionService {
+// NewSubscriptionService — конструктор сервиса
+func NewSubscriptionService(
+    repo repository.SubscriptionRepository,
+    templateRepo repository.TemplateRepository,
+) *SubscriptionService {
     return &SubscriptionService{
-        repo:  repo,
-        cache: cache.NewRedisCache(), // ← инициализируем реальным кешем
+        repo:         repo,
+        templateRepo: templateRepo,
+        cache:        cache.NewRedisCache(),
     }
 }
+
 // GetTotalCost — рассчитывает суммарную стоимость подписок за указанный период.
 // Параметры:
-//   - ctx: контекст для управления временем жизни запроса
-//   - userID: идентификатор пользователя (обязательный, извлекается из JWT)
-//   - serviceName: название сервиса (опционально, фильтр)
-//   - startDate: дата начала периода в формате MM-YYYY (обязательно)
-//   - endDate: дата окончания периода в формате MM-YYYY (опционально)
-//
-// Логика работы с кешем (Redis):
-//  1. Получаем текущую версию кеша пользователя из таблицы cache_control_user в БД.
-//     - Версия хранится в БД, чтобы обеспечить 100% консистентность.
-//     - Если версию получить не удалось (ошибка БД) — кеш отключается, идём в БД.
-//  2. Строим ключ для Redis с учётом версии и всех параметров запроса:
-//       total:v{version}:{userID}:{serviceName}:{startDate}:{endDate}
-//     - Пример: total:v3:123:yandex:01-2025:12-2025
-//     - Если serviceName пустой — подставляется пустая строка.
-//  3. Проверяем наличие кеша в Redis.
-//     - Если есть — возвращаем (кеш-попадание).
-//     - Если нет — идём в БД, сохраняем результат в Redis с TTL.
-//
-// Почему версия в БД:
-//   - При изменении подписок (Create/Update/Delete) мы инкрементим версию в БД.
-//   - Если Redis упал и восстановился — старые ключи не читаются (версия изменилась).
-//   - Если БД cache_control_user недоступна — кеш отключается, идём напрямую в БД.
-//   - Это даёт 100% гарантию, что пользователь никогда не увидит устаревшие данные.
-//
+//   - userID: ID пользователя (пусто для админа → все подписки)
+//   - serviceName: фильтр по названию сервиса (опционально)
+//   - startDate: дата начала в формате MM-YYYY (обязательно)
+//   - endDate: дата окончания в формате MM-YYYY (обязательно)
 // Возвращает:
-//   - total: суммарная стоимость (int)
-//   - error: ошибка, если парсинг дат не удался или диапазон невалидный
+//   - int: суммарная стоимость
+//   - error: ErrStartDateRequired если startDate пустой
+//   - error: ErrInvalidDateRange если startDate > endDate
+//   - error: ошибки парсинга дат или БД
 func (s *SubscriptionService) GetTotalCost(ctx context.Context, userID, serviceName, startDate, endDate string) (int, error) {
-	// 1. Устанавливаем таймаут на выполнение всего запроса (кеш + БД)
-	//    Если операция займёт больше 3 секунд — контекст отменится.
-	//    3 секунды достаточно для БД (50-200 мс) + кеш (1 мс),
-	//    но защищает от "зависших" запросов под нагрузкой.
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+    defer cancel()
 
-	// ============================================================
-	// 2. ПАРСИНГ ДАТ (обязательная валидация перед любыми действиями)
-	// ============================================================
-	startDateTimeDB, err := parseDate(startDate)
-	if err != nil {
-		logger.Warn("GetTotalCost: failed to parse startDate %s: %v", startDate, err)
-		return 0, fmt.Errorf("invalid startDate: %w", err)
-	}
+    // ============================================================
+    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
+    // ============================================================
+    if startDate == "" {
+        return 0, ErrStartDateRequired
+    }
+    if endDate == "" {
+        return 0, fmt.Errorf("end_date is required")
+    }
 
-	endDateTimeDB, err := parseEndDate(endDate)
-	if err != nil {
-		logger.Warn("GetTotalCost: failed to parse endDate %s: %v", endDate, err)
-		return 0, fmt.Errorf("invalid endDate: %w", err)
-	}
+    // ============================================================
+    // 2. ПАРСИНГ ДАТ
+    // ============================================================
+    startDateTimeDB, err := parseDate(startDate)
+    if err != nil {
+        logger.Warn("GetTotalCost: failed to parse startDate %s: %v", startDate, err)
+        return 0, fmt.Errorf("invalid startDate: %w", err)
+    }
 
-	// Проверяем, что start_date <= end_date
-	if err := validateDateRange(startDateTimeDB, endDateTimeDB); err != nil {
-		logger.Warn("GetTotalCost: invalid date range: startDate=%s > endDate=%s", startDate, endDate)
-		return 0, err
-	}
+    endDateTimeDB, err := parseEndDate(endDate)
+    if err != nil {
+        logger.Warn("GetTotalCost: failed to parse endDate %s: %v", endDate, err)
+        return 0, fmt.Errorf("invalid endDate: %w", err)
+    }
 
-	// ============================================================
-	// 3. ПОЛУЧАЕМ ВЕРСИЮ КЕША ИЗ БД
-	// ============================================================
-	// Версия хранится в БД, чтобы гарантировать консистентность.
-	// Если БД недоступна — мы не используем кеш, идём напрямую в БД.
-	version, err := s.repo.GetCacheUserVersion(ctx, userID)
-	if err != nil {
-		// При любой ошибке (таблица не найдена, соединение разорвано, таймаут) —
-		// выключаем кеш и идём напрямую в БД.
-		logger.Warn("GetTotalCost: failed to get cache version for user %s: %v, skipping cache", userID, err)
-		return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
-	}
+    if err := validateDateRange(startDateTimeDB, endDateTimeDB); err != nil {
+        logger.Warn("GetTotalCost: invalid date range: startDate=%s > endDate=%s", startDate, endDate)
+        return 0, fmt.Errorf("start_date > end_date")
+    }
 
-	// ============================================================
-	// 4. СТРОИМ КЛЮЧ ДЛЯ REDIS
-	// ============================================================
-	// Ключ включает ВСЕ параметры запроса и версию:
-	//   total:v{version}:{userID}:{serviceName}:{startDate}:{endDate}
-	//
-	// Это гарантирует, что:
-	//   - При изменении данных (инкремент версии) старый кеш перестаёт читаться.
-	//   - Разные комбинации фильтров кешируются отдельно.
-	//   - Пустой serviceName — допустимо.
-	cacheKey := fmt.Sprintf("total:v%d:%s:%s:%s:%s",
-		version,
-		userID,
-		serviceName,
-		startDate,
-		endDate,
-	)
+    // ============================================================
+    // 3. АДМИН — КЕШ ОТКЛЮЧАЕМ
+    // ============================================================
+    if userID == "" {
+        logger.Debug("GetTotalCost: admin request (userID empty), skipping cache")
+        return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+    }
 
-	// ============================================================
-	// 5. ПРОВЕРЯЕМ НАЛИЧИЕ КЕША В REDIS
-	// ============================================================
-	// Если Redis доступен и ключ существует — возвращаем значение.
-	// При ошибке Redis (недоступен, таймаут) — игнорируем кеш, идём в БД.
-	cachedValue, err := s.cache.Get(ctx, cacheKey)
-		logger.Debug("cacheKey:%s, ctx:%s",cacheKey,ctx )
-	if err == nil && cachedValue > 0 {
-		// Кеш-попадание: возвращаем сохранённое значение.
-		logger.Debug("GetTotalCost: cache hit for key %s, value=%d", cacheKey, cachedValue)
-		return cachedValue, nil
-	}
+    // ============================================================
+    // 4. ПОЛУЧАЕМ ВЕРСИЮ КЕША
+    // ============================================================
+    version, err := s.repo.GetCacheUserVersion(ctx, userID)
+    if err != nil {
+        logger.Warn("GetTotalCost: failed to get cache version for user %s: %v, skipping cache", userID, err)
+        return s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+    }
 
-	// Если Redis вернул ошибку (не redis.Nil, а реальная ошибка подключения) —
-	// логируем предупреждение, но продолжаем работу через БД.
-	// redis.Nil — это не ошибка, а штатное "ключа нет" (кеш-промах).
-	if err != nil && err != redis.Nil {
-		logger.Warn("GetTotalCost: Redis error for key %s: %v, falling back to DB", cacheKey, err)
-	}
+    // ============================================================
+    // 5. РАБОТА С КЕШЕМ
+    // ============================================================
+    cacheKey := fmt.Sprintf("total:v%d:%s:%s:%s:%s",
+        version,
+        userID,
+        serviceName,
+        startDate,
+        endDate,
+    )
 
-	// ============================================================
-	// 6. КЕШ-ПРОМАХ: ИДЁМ В БД
-	// ============================================================
-	// Кеш-промах — штатная ситуация (первый запрос, TTL истёк, данные изменились).
-	// Логируем Debug (не Warn), потому что это нормальная работа.
-	logger.Debug("GetTotalCost: cache miss for key %s, querying DB", cacheKey)
-	total, err := s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
-	if err != nil {
-		logger.Error("GetTotalCost: DB query failed: %v", err)
-		return 0, err
-	}
+    cachedValue, err := s.cache.Get(ctx, cacheKey)
+    if err == nil && cachedValue > 0 {
+        logger.Debug("GetTotalCost: cache hit for key %s, value=%d", cacheKey, cachedValue)
+        return cachedValue, nil
+    }
 
-	// ============================================================
-	// 7. СОХРАНЯЕМ РЕЗУЛЬТАТ В REDIS (если доступен)
-	// ============================================================
-	// Сохраняем с TTL = 5 минут.
-	// TTL достаточно короткий, чтобы даже при сбое инвалидации
-	// данные автоматически протухли через 5 минут.
-	const ttl = 5 * time.Minute
-	if err := s.cache.Set(ctx, cacheKey, total, ttl); err != nil {
-		// Если Redis недоступен — логируем ошибку, но не останавливаем работу.
-		// Пользователь всё равно получит корректные данные из БД.
-		logger.Warn("GetTotalCost: failed to cache result for key %s: %v", cacheKey, err)
-	} else {
-		logger.Debug("GetTotalCost: cached result for key %s, total=%d, ttl=%v", cacheKey, total, ttl)
-	}
+    if err != nil && err != redis.Nil {
+        logger.Warn("GetTotalCost: Redis error for key %s: %v, falling back to DB", cacheKey, err)
+    }
 
-	// Возвращаем результат из БД
-	return total, nil
+    // ============================================================
+    // 6. КЕШ-ПРОМАХ: ИДЁМ В БД
+    // ============================================================
+    logger.Debug("GetTotalCost: cache miss for key %s, querying DB", cacheKey)
+    total, err := s.repo.GetTotalCost(ctx, userID, serviceName, startDateTimeDB, endDateTimeDB)
+    if err != nil {
+        logger.Error("GetTotalCost: DB query failed: %v", err)
+        return 0, err
+    }
+
+    // ============================================================
+    // 7. СОХРАНЯЕМ В КЕШ
+    // ============================================================
+    const ttl = 5 * time.Minute
+    if err := s.cache.Set(ctx, cacheKey, total, ttl); err != nil {
+        logger.Warn("GetTotalCost: failed to cache result for key %s: %v", cacheKey, err)
+    } else {
+        logger.Debug("GetTotalCost: cached result for key %s, total=%d, ttl=%v", cacheKey, total, ttl)
+    }
+
+    return total, nil
 }
 
-
-
-// CreateSubscription — бизнес-логика создания новой подписки.
-// Параметры:  - ctx: контекст для управления временем жизни запроса
-//             - sub: структура с данными новой подписки (ServiceName, Price, UserID, StartDate, EndDate)
-// Логика:
-//   1. Парсит startDate из строки (формат MM-YYYY) в time.Time
-//   2. Если endDate указан — парсит его в time.Time
-//   3. Вызывает репозиторий для создания записи в БД
-// Возвращает: - id: идентификатор созданной подписки (int), - error: ошибка, если парсинг не удался или создание не удалось
- func (s *SubscriptionService) CreateSubscription(ctx context.Context, sub models.Subscription) (int, error) {
+// CreateSubscription — создаёт новую подписку с полной валидацией
+// Параметры:
+//   - templateID: ID шаблона (обязательно, > 0)
+//   - userID: ID пользователя из JWT (обязательно, не пустой)
+//   - startDate: дата начала в формате MM-YYYY (обязательно)
+//   - endDate: дата окончания в формате MM-YYYY (опционально)
+// Возвращает:
+//   - int: ID созданной подписки
+//   - error: ошибка валидации или БД
+func (s *SubscriptionService) CreateSubscription(ctx context.Context, templateID int, userID string, startDate, endDate string) (int, error) {
     ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
     defer cancel()
-    startDate, err := parseDate(sub.StartDate)
+
+    // ============================================================
+    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+    // ============================================================
+
+    if templateID <= 0 {
+        return 0, ErrTemplateIDRequired
+    }
+    if userID == "" {
+        return 0, ErrUserIDRequired
+    }
+    if startDate == "" {
+        return 0, ErrStartDateRequired
+    }
+
+    // ============================================================
+    // 2. БИЗНЕС-ЛОГИКА
+    // ============================================================
+
+    // 2.1. Получаем шаблон
+    template, err := s.templateRepo.GetTemplateByID(ctx, templateID)
     if err != nil {
-        return 0, fmt.Errorf("invalid start_date: %w", err)
+        return 0, fmt.Errorf("%w: %v", ErrTemplateNotFound, err)
+    }
+    if template == nil {
+        return 0, ErrTemplateNotFound
     }
 
-    var endDate *time.Time
-    if sub.EndDate != "" {
-        parsed, err := parseDate(sub.EndDate)
+    // 2.2. Парсим даты
+    startDateParsed, err := parseDate(startDate)
+    if err != nil {
+        return 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, err.Error())
+    }
+    var endDateParsed *time.Time
+    if endDate != "" {
+        parsed, err := parseDate(endDate)
         if err != nil {
-            return 0, fmt.Errorf("invalid end_date: %w", err)
+            return 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, err.Error())
         }
-        endDate = &parsed
+        endDateParsed = &parsed
     }
 
-    return s.repo.CreateSubscription(ctx, sub, startDate, endDate)
+    // 2.3. Проверяем, что start_date не в прошлом
+    if !canChangeStartDate(startDateParsed) {
+        return 0, ErrCannotChangeStartDate
+    }
+
+    // 2.4. Создаём подписку
+    sub := models.Subscription{
+        ServiceName: template.ServiceName,
+        Price:       template.Price,
+        UserID:      userID,
+        TemplateID:  templateID,
+    }
+
+    id, err := s.repo.CreateSubscription(ctx, sub, startDateParsed, endDateParsed)
+    if err != nil && err.Error() == "duplicate" {
+        return 0, ErrTemplateHasSubscriptions
+    }
+    if err != nil {
+        return 0, err
+    }
+    return id, nil
 }
-// UpdateSubscription — бизнес-логика обновления подписки.
-// Параметры:   - ctx: контекст для управления временем жизни запроса
-//              - sub: структура с новыми данными подписки (поля: ID, ServiceName, Price, UserID, StartDate, EndDate)
-// Логика:
-//   1. Парсит startDate из строки (формат MM-YYYY) в time.Time
-//   2. Если endDate указан — парсит его в time.Time
-//   3. Вызывает репозиторий для обновления записи в БД
-// Возвращает: - error: ошибка, если парсинг не удался или обновление не удалось
+
+// UpdateSubscription — обновляет подписку с полной валидацией и проверкой прав
+// Параметры:
+//   - sub: обновлённые данные подписки (должен содержать ID, UserID, StartDate, EndDate)
+//   - role: роль текущего пользователя (из JWT)
+// Возвращает:
+//   - error: ErrInvalidID если sub.ID <= 0
+//   - error: ErrUserIDRequired если sub.UserID пустой
+//   - error: ErrStartDateRequired если sub.StartDate пустой
+//   - error: ErrPermissionDenied если пользователь не владелец и не админ
+//   - error: sql.ErrNoRows если подписка не найдена
+//   - error: ErrCannotChangeStartDate если start_date в прошлом
+//   - error: другие ошибки (парсинг дат, БД)
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models.Subscription, role string) error {
     ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
     defer cancel()
+
+    // ============================================================
+    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+    // ============================================================
+    if sub.ID <= 0 {
+        return ErrInvalidID
+    }
+    if sub.UserID == "" {
+        return ErrUserIDRequired
+    }
+    if sub.StartDate == "" {
+        return ErrStartDateRequired
+    }
+
+    // ============================================================
+    // 2. БИЗНЕС-ЛОГИКА
+    // ============================================================
+
+    // 2.1. Получаем существующую подписку из БД для проверки владельца
+    existing, err := s.repo.GetSubscriptionByID(ctx, sub.ID)
+    if err != nil {
+        return err
+    }
+    if existing == nil {
+        return sql.ErrNoRows
+    }
+
+    // 2.2. Проверка прав доступа
+    //     - Админ может обновлять любые подписки
+    //     - Обычный пользователь — только свои
+    if role != "admin" && existing.UserID != sub.UserID {
+        return ErrPermissionDenied
+    }
+
+    // 2.3. Парсим даты
     startDate, err := parseDate(sub.StartDate)
     if err != nil {
         return fmt.Errorf("invalid start_date: %w", err)
     }
-	if role!="admin"{
- if !canChangeStartDate(startDate){
-	return ErrCannotChangeStartDate
- }}
     var endDate *time.Time
     if sub.EndDate != "" {
         parsed, err := parseDate(sub.EndDate)
@@ -224,102 +281,186 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, sub models
         endDate = &parsed
     }
 
+    // 2.4. Проверяем, что start_date не в прошлом
+    if !canChangeStartDate(startDate) {
+        return ErrCannotChangeStartDate
+    }
+
+    // 2.5. Вызываем репозиторий для обновления
     return s.repo.UpdateSubscription(ctx, sub, startDate, endDate)
 }
-// GetSubscriptionByID — бизнес-логика получения подписки по ID.
+// GetSubscriptionByID — получает подписку по ID с полной валидацией и проверкой прав
 // Параметры:
-//   - ctx: контекст для управления временем жизни запроса
-//   - id: идентификатор подписки (int)
-// Логика:
-//   1. Вызывает репозиторий для получения записи из БД
-//   2. Возвращает nil, nil если подписка не найдена
+//   - id: ID подписки (обязательно, > 0)
+//   - userID: ID пользователя из JWT (обязательно, не пустой)
+//   - role: роль пользователя (admin/user)
 // Возвращает:
-//   - *models.Subscription: структура с данными подписки (или nil, если не найдена)
-//   - error: ошибка, если запрос к БД не удался
-func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int) (*models.Subscription, error) {
-    return s.repo.GetSubscriptionByID(ctx, id)
-}
+//   - *models.Subscription: данные подписки
+//   - error: ErrInvalidID если id <= 0
+//   - error: ErrUserIDRequired если userID пустой
+//   - error: ErrPermissionDenied если пользователь не владелец и не админ
+//   - error: другие ошибки БД
+func (s *SubscriptionService) GetSubscriptionByID(ctx context.Context, id int, userID string, role string) (*models.Subscription, error) {
+    // ============================================================
+    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+    // ============================================================
+    if id <= 0 {
+        return nil, ErrInvalidID
+    }
+    if userID == "" {
+        return nil, ErrUserIDRequired
+    }
 
-// DeleteSubscription — бизнес-логика удаления подписки по ID.
+    // ============================================================
+    // 2. БИЗНЕС-ЛОГИКА
+    // ============================================================
+
+    // 2.1. Получаем подписку из репозитория
+    sub, err := s.repo.GetSubscriptionByID(ctx, id)
+    if err != nil {
+        return nil, err
+    }
+    if sub == nil {
+        return nil, nil
+    }
+
+    // 2.2. Проверка прав: админ видит всё, обычный пользователь — только свои
+    if role != "admin" && sub.UserID != userID {
+        return nil, ErrPermissionDenied
+    }
+
+    return sub, nil
+}
+// DeleteSubscription — удаляет подписку по ID с полной валидацией и проверкой прав
 // Параметры:
-//   - ctx: контекст для управления временем жизни запроса
-//   - id: идентификатор подписки (int)
-// Логика:
-//   1. Вызывает репозиторий для удаления записи из БД
-//   2. Возвращает sql.ErrNoRows если подписка не найдена
+//   - id: ID подписки (обязательно, > 0)
+//   - userID: ID пользователя из JWT (обязательно, не пустой)
+//   - role: роль пользователя (admin/user)
 // Возвращает:
-//   - error: ошибка, если удаление не удалось или запись не найдена
-func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int) error {
+//   - error: ErrInvalidID если id <= 0
+//   - error: ErrUserIDRequired если userID пустой
+//   - error: ErrPermissionDenied если пользователь не владелец и не админ
+//   - error: sql.ErrNoRows если подписка не найдена
+//   - error: другие ошибки БД
+func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id int, userID string, role string) error {
     ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
     defer cancel()
+
+    // ============================================================
+    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ (кастомные ошибки)
+    // ============================================================
+    if id <= 0 {
+        return ErrInvalidID
+    }
+    if userID == "" {
+        return ErrUserIDRequired
+    }
+
+    // ============================================================
+    // 2. БИЗНЕС-ЛОГИКА
+    // ============================================================
+
+    // 2.1. Получаем существующую подписку из БД для проверки владельца
+    existing, err := s.repo.GetSubscriptionByID(ctx, id)
+    if err != nil {
+        return err
+    }
+    if existing == nil {
+        return sql.ErrNoRows
+    }
+
+    // 2.2. Проверка прав доступа
+    //     - Админ может удалять любые подписки
+    //     - Обычный пользователь — только свои
+    if role != "admin" && existing.UserID != userID {
+        return ErrPermissionDenied
+    }
+
+    // 2.3. Вызываем репозиторий для удаления
     return s.repo.DeleteSubscription(ctx, id)
 }
 
-// ListSubscriptions — бизнес-логика получения списка подписок с пагинацией.
+// ListSubscriptions — получает список подписок с пагинацией и проверкой прав
 // Параметры:
-//   - ctx: контекст для управления временем жизни запроса
-//   - limit: максимальное количество записей (должен быть > 0)
-//   - offset: сдвиг от начала (должен быть >= 0)
-// Логика:
-//   1. Вызывает репозиторий для получения списка из БД
-//   2. Возвращает пустой слайс, если записи не найдены
+//   - userID: ID пользователя из JWT (обязательно, если не админ)
+//   - role: роль пользователя (admin/user)
+//   - limit: лимит записей
+//   - offset: смещение
 // Возвращает:
-//   - []models.Subscription: слайс подписок (может быть пустым)
-//   - error: ошибка, если запрос к БД не удался
+//   - []models.Subscription: список подписок
+//   - error: ErrUserIDRequired если userID пустой и роль не admin
+//   - error: ошибка БД
 func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID, role string, limit, offset int) ([]models.Subscription, error) {
     ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
     defer cancel()
 
+    // ============================================================
+    // 1. ВАЛИДАЦИЯ ВХОДНЫХ ДАННЫХ
+    // ============================================================
+    // Админ может видеть все подписки (userID не нужен)
+    // Обычный пользователь должен иметь userID
+    if role != "admin" && userID == "" {
+        return nil, ErrUserIDRequired
+    }
+
+    // ============================================================
+    // 2. БИЗНЕС-ЛОГИКА
+    // ============================================================
     // Админ видит всё
     if role == "admin" {
         return s.repo.ListSubscriptions(ctx, "", limit, offset)
     }
 
     // Обычный пользователь видит только свои
-    if userID == "" {
-        return nil, fmt.Errorf("user_id is required")
-    }
-
     return s.repo.ListSubscriptions(ctx, userID, limit, offset)
 }
+
 // ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПАРСИНГА ДАТ
 // ============================================================
 
 // parseDate парсит строку в формате MM-YYYY в time.Time
 func parseDate(dateStr string) (time.Time, error) {
-    if dateStr == "" {
-        return time.Time{}, fmt.Errorf("date is empty")
-    }
-    return time.Parse("01-2006", dateStr)
+	if dateStr == "" {
+		return time.Time{}, fmt.Errorf("date is empty")
+	}
+	return time.Parse("01-2006", dateStr)
 }
 
 // parseEndDate парсит endDate, превращает в последний день месяца или 2100-01-01
 func parseEndDate(dateStr string) (time.Time, error) {
-    if dateStr == "" {
-        return time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC), nil
-    }
-    parsed, err := time.Parse("01-2006", dateStr)
-    if err != nil {
-        return time.Time{}, err
-    }
-    return time.Date(parsed.Year(), parsed.Month()+1, 0, 0, 0, 0, 0, time.UTC), nil
+	if dateStr == "" {
+		return time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC), nil
+	}
+	parsed, err := time.Parse("01-2006", dateStr)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Date(parsed.Year(), parsed.Month()+1, 0, 0, 0, 0, 0, time.UTC), nil
 }
 
 // validateDateRange проверяет, что startDate <= endDate
 func validateDateRange(start, end time.Time) error {
-    if start.After(end) {
-        return fmt.Errorf("start_date > end_date")
-    }
-    return nil
+	if start.After(end) {
+		return fmt.Errorf("start_date > end_date")
+	}
+	return nil
 }
+
 // SetCache — устанавливает кеш для сервиса (используется в тестах)
 func (s *SubscriptionService) SetCache(c cache.Cache) {
-    s.cache = c
+	s.cache = c
 }
+
 func canChangeStartDate(startDate time.Time) bool {
-    now := time.Now().In(time.Local)
-    today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-    start := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.Local)
-    return start.After(today)
+    now := time.Now()
+    start := time.Date(startDate.Year(), startDate.Month(), 1, 0, 0, 0, 0, time.Local)
+    current := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+    return start.After(current) || start.Equal(current)
 }
+/*func canChangeStartDate(startDate time.Time) bool {
+	now := time.Now().In(time.Local)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	start := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.Local)
+	return start.After(today)
+}*/

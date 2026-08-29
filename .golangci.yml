@@ -1,0 +1,31 @@
+linters:
+  enable:
+    - gosec
+    - gocyclo
+    - gocritic
+    - goimports
+    - misspell
+    - unparam
+    - whitespace
+
+linters-settings:
+  gocyclo:
+    min-complexity: 20
+  dupl:
+    threshold: 150
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - unparam
+        - gocyclo
+    - path: main\.go
+      linters:
+        - gocyclo

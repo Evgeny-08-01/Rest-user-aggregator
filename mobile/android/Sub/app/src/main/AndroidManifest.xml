@@ -38,9 +38,17 @@
             android:exported="false" />
 
         <activity
-            android:name=".EditSubscriptionActivity"
-            android:exported="false" />
+    android:name=".EditSubscriptionActivity"
+    android:exported="false" />
 
+       <activity
+    android:name=".TemplatesActivity"
+    android:exported="false" />
+
+<activity
+    android:name=".CreateTemplateActivity"
+    android:exported="false" />
+    
     </application>
 
 </manifest>

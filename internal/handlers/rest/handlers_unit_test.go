@@ -1,4 +1,4 @@
-//go:build unit
+//g o:build unit
 
 package handlers
 
@@ -11,19 +11,24 @@ import (
 	"testing"
 	"time"
 
+	"Rest-user-agregator/internal/authentication"
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/repository"
 	"Rest-user-agregator/internal/service"
-	"Rest-user-agregator/internal/authentication"
+	"Rest-user-agregator/pkg/logger"
 )
 
 func TestCreate_Mock(t *testing.T) {
 	mockRepo := &repository.MockSubRepo{}
 	mockRepo.CreateMock = func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
+		if sub.TemplateID == 0 {
+			t.Error("TemplateID is required")
+		}
 		return 1, nil
 	}
 
-	svc := service.NewSubscriptionService(mockRepo)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(mockRepo, templateRepo)
 	handler := NewHandler(svc, nil)
 
 	tests := []struct {
@@ -31,12 +36,21 @@ func TestCreate_Mock(t *testing.T) {
 		body       string
 		wantStatus int
 	}{
-		{"success", `{"service_name":"Test","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusCreated},
-		{"empty service_name", `{"service_name":"","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusBadRequest},
-		{"negative price", `{"service_name":"Test","price":-10,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusBadRequest},
-		{"empty user_id", `{"service_name":"Test","price":100,"user_id":"","start_date":"07-2025"}`, http.StatusBadRequest},
-		{"invalid date", `{"service_name":"Test","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"2025-07"}`, http.StatusBadRequest},
-		{"invalid JSON", `{"service_name":}`, http.StatusBadRequest},
+		{
+			name:       "success",
+			body:       `{"service_name":"Test","price":100,"template_id":1,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"09-2026","end_date":"12-2026"}`,
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "empty template_id",
+			body:       `{"service_name":"Test","price":100,"template_id":0,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid JSON",
+			body:       `{"template_id":}`,
+			wantStatus: http.StatusBadRequest,
+		},
 	}
 
 	for _, tt := range tests {
@@ -47,13 +61,13 @@ func TestCreate_Mock(t *testing.T) {
 			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 			handler.CreateSubscriptionHandler(w, req)
+			t.Logf("Response body: %s", w.Body.String())
 			if w.Code != tt.wantStatus {
 				t.Errorf("got %d, want %d", w.Code, tt.wantStatus)
 			}
 		})
 	}
 }
-
 func TestGet_Mock(t *testing.T) {
 	mockRepo := &repository.MockSubRepo{}
 	mockRepo.GetSubByIDMock = func(ctx context.Context, id int) (*models.Subscription, error) {
@@ -65,11 +79,13 @@ func TestGet_Mock(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "07-2025",
 				EndDate:     "",
+				TemplateID:  1,
 			}, nil
 		}
 		return nil, nil
 	}
-	svc := service.NewSubscriptionService(mockRepo)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(mockRepo, templateRepo)
 	handler := NewHandler(svc, nil)
 
 	tests := []struct {
@@ -84,7 +100,8 @@ func TestGet_Mock(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/api/subscriptions/"+tt.id, nil)
-			ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
 			req = req.WithContext(ctx)
 			req.SetPathValue("id", tt.id)
 			w := httptest.NewRecorder()
@@ -98,10 +115,21 @@ func TestGet_Mock(t *testing.T) {
 
 func TestUpdate_Mock(t *testing.T) {
 	mockRepo := &repository.MockSubRepo{}
+	mockRepo.GetSubByIDMock = func(ctx context.Context, id int) (*models.Subscription, error) {
+    return &models.Subscription{
+        ID:          1,
+        ServiceName: "Test",
+        UserID:      "550e8400-e29b-41d4-a716-446655440000",
+    }, nil
+}
 	mockRepo.UpdateSubMock = func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
+		if sub.ID != 1 {
+			t.Errorf("Expected ID 1, got %d", sub.ID)
+		}
 		return nil
 	}
-	svc := service.NewSubscriptionService(mockRepo)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(mockRepo, templateRepo)
 	handler := NewHandler(svc, nil)
 
 	tests := []struct {
@@ -110,17 +138,19 @@ func TestUpdate_Mock(t *testing.T) {
 		body       string
 		wantStatus int
 	}{
-		{"success", "1", `{"service_name":"Updated","price":200,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"08-2025","end_date":"12-2025"}`, http.StatusOK},
-		{"invalid id", "abc", `{"service_name":"Test","price":100,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"07-2025"}`, http.StatusBadRequest},
+		{"success", "1", `{"service_name":"Updated","price":200,"user_id":"550e8400-e29b-41d4-a716-446655440000","start_date":"09-2027","end_date":"12-2027"}`, http.StatusOK},
+		{"invalid id", "abc", `{"start_date":"09-2027"}`, http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("PUT", "/api/subscriptions/"+tt.id, bytes.NewReader([]byte(tt.body)))
 			req.SetPathValue("id", tt.id)
-			ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000") 
 			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
+	logger.Debug("UpdateSubscriptionHandler: req=%+v", req)		
 			handler.UpdateSubscriptionHandler(w, req)
 			if w.Code != tt.wantStatus {
 				t.Errorf("got %d, want %d", w.Code, tt.wantStatus)
@@ -131,10 +161,18 @@ func TestUpdate_Mock(t *testing.T) {
 
 func TestDelete_Mock(t *testing.T) {
 	mockRepo := &repository.MockSubRepo{}
+	mockRepo.GetSubByIDMock = func(ctx context.Context, id int) (*models.Subscription, error) {
+    return &models.Subscription{
+        ID:          1,
+        ServiceName: "Test",
+        UserID:      "550e8400-e29b-41d4-a716-446655440000",
+    }, nil
+}
 	mockRepo.DeleteSubMock = func(ctx context.Context, id int) error {
 		return nil
 	}
-	svc := service.NewSubscriptionService(mockRepo)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(mockRepo, templateRepo)
 	handler := NewHandler(svc, nil)
 
 	tests := []struct {
@@ -150,7 +188,8 @@ func TestDelete_Mock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("DELETE", "/api/subscriptions/"+tt.id, nil)
 			req.SetPathValue("id", tt.id)
-			ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+ctx := context.WithValue(req.Context(), authentication.RoleKey, "admin")
+ctx = context.WithValue(ctx, authentication.UserIDKey, "550e8400-e29b-41d4-a716-446655440000")
 			req = req.WithContext(ctx)
 			w := httptest.NewRecorder()
 			handler.DeleteSubscriptionHandler(w, req)
@@ -165,11 +204,12 @@ func TestList_Mock(t *testing.T) {
 	mockRepo := &repository.MockSubRepo{}
 	mockRepo.ListSubMock = func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
 		return []models.Subscription{
-			{ID: 1, ServiceName: "Test1", Price: 100, UserID: "550e8400-e29b-41d4-a716-446655440000", StartDate: "07-2025"},
-			{ID: 2, ServiceName: "Test2", Price: 200, UserID: "550e8400-e29b-41d4-a716-446655440000", StartDate: "08-2025"},
+			{ID: 1, ServiceName: "Test1", Price: 100, UserID: "550e8400-e29b-41d4-a716-446655440000", StartDate: "07-2025", TemplateID: 1},
+			{ID: 2, ServiceName: "Test2", Price: 200, UserID: "550e8400-e29b-41d4-a716-446655440000", StartDate: "08-2025", TemplateID: 2},
 		}, nil
 	}
-	svc := service.NewSubscriptionService(mockRepo)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(mockRepo, templateRepo)
 	handler := NewHandler(svc, nil)
 
 	req := httptest.NewRequest("GET", "/api/subscriptions?limit=10&offset=0", nil)
@@ -195,7 +235,8 @@ func TestTotalCost_Mock(t *testing.T) {
 		return 1000, nil
 	}
 
-	svc := service.NewSubscriptionService(mockRepo)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(mockRepo, templateRepo)
 	handler := NewHandler(svc, nil)
 
 	req := httptest.NewRequest("GET", "/api/subscriptions/total-cost?user_id=test&start_date=01-2025&end_date=12-2025", nil)
@@ -230,6 +271,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "07-2025",
 				EndDate:     "",
+				TemplateID:  1,
 			},
 			wantErr: false,
 		},
@@ -241,6 +283,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "07-2025",
 				EndDate:     "",
+				TemplateID:  1,
 			},
 			wantErr: true,
 			errMsg:  "service_name is required",
@@ -253,6 +296,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "07-2025",
 				EndDate:     "",
+				TemplateID:  1,
 			},
 			wantErr: true,
 			errMsg:  "price cant be negative value",
@@ -265,6 +309,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "",
 				StartDate:   "07-2025",
 				EndDate:     "",
+				TemplateID:  1,
 			},
 			wantErr: true,
 			errMsg:  "user_id is required",
@@ -277,6 +322,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "not-a-uuid",
 				StartDate:   "07-2025",
 				EndDate:     "",
+				TemplateID:  1,
 			},
 			wantErr: true,
 			errMsg:  "user_id: not valid-UUID",
@@ -289,6 +335,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "2025-07",
 				EndDate:     "",
+				TemplateID:  1,
 			},
 			wantErr: true,
 			errMsg:  "start_date must be in format MM-YYYY",
@@ -301,6 +348,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "07-2025",
 				EndDate:     "2025-12",
+				TemplateID:  1,
 			},
 			wantErr: true,
 			errMsg:  "end_date must be in format MM-YYYY",
@@ -313,6 +361,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "07-2025",
 				EndDate:     "12-2025",
+				TemplateID:  1,
 			},
 			wantErr: false,
 		},
@@ -324,17 +373,7 @@ func TestValidateSubscription(t *testing.T) {
 				UserID:      "550e8400-e29b-41d4-a716-446655440000",
 				StartDate:   "07-2025",
 				EndDate:     "",
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid UUID with spaces",
-			sub: models.Subscription{
-				ServiceName: "Test",
-				Price:       100,
-				UserID:      "550e8400-e29b-41d4-a716-446655440000",
-				StartDate:   "07-2025",
-				EndDate:     "",
+				TemplateID:  1,
 			},
 			wantErr: false,
 		},

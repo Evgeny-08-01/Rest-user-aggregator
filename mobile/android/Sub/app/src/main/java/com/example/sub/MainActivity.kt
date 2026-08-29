@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
         etEndDate = findViewById(R.id.etEndDate)
         btnAdd = findViewById(R.id.btnAdd)
         btnTotal = findViewById(R.id.btnTotal)
+        val btnRefresh: Button = findViewById(R.id.btnRefresh)
         btnLogout = findViewById(R.id.btnLogout)
 
         // Показываем имя пользователя
@@ -46,7 +47,7 @@ class MainActivity : AppCompatActivity() {
 
         adapter = SubscriptionAdapter(
             items = emptyList(),
-            onEdit = { sub -> 
+            onEdit = { sub ->
                 startActivity(android.content.Intent(this, EditSubscriptionActivity::class.java)
                     .putExtra("subscription_id", sub.id))
             },
@@ -56,11 +57,40 @@ class MainActivity : AppCompatActivity() {
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
 
+        // ============================================================
+        // КНОПКА ДЛЯ АДМИНА (УПРАВЛЕНИЕ ШАБЛОНАМИ)
+        // ============================================================
+        val currentUser = getUser(this)
+        if (currentUser?.role == "admin") {
+            val btnTemplates = Button(this).apply {
+                text = "📋 Управление шаблонами"
+                setBackgroundColor(android.graphics.Color.parseColor("#16a34a"))
+                setTextColor(android.graphics.Color.WHITE)
+                setOnClickListener {
+                    startActivity(android.content.Intent(this@MainActivity, TemplatesActivity::class.java))
+                }
+            }
+            val parent = btnAdd.parent as? android.view.ViewGroup
+            parent?.addView(btnTemplates, parent.indexOfChild(btnAdd))
+        }
+
         btnAdd.setOnClickListener {
             startActivity(android.content.Intent(this, AddSubscriptionActivity::class.java))
         }
 
         btnLogout.setOnClickListener {
+        btnRefresh.setOnClickListener {
+            loadSubscriptions()
+            showToast("Обновлено")
+        }
+        btnRefresh.setOnClickListener {
+            loadSubscriptions()
+            showToast("Обновлено")
+        }
+        btnRefresh.setOnClickListener {
+            loadSubscriptions()
+            showToast("Обновлено")
+        }
             TokenManager.saveToken(this, "")
             startActivity(android.content.Intent(this, LoginActivity::class.java))
             finish()
@@ -98,9 +128,7 @@ class MainActivity : AppCompatActivity() {
             val list = ApiService.getSubscriptions(this@MainActivity)
             withContext(Dispatchers.Main) {
                 adapter.updateData(list)
-                if (list.isEmpty()) {
-                    showToast("Нет подписок")
-                }
+                // Не показываем тост, если список пустой — просто обновляем адаптер
             }
         }
     }

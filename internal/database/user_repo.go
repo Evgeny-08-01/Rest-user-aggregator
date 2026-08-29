@@ -39,8 +39,7 @@ func (r *PostgresRepo) CreateUser(ctx context.Context, user models.User) error {
 // Если пользователь не найден — возвращает nil, nil
 // ============================================================
 func (r *PostgresRepo) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	
-    logger.Debug("GetUserByEmail: searching for email: %s", email)
+	logger.Debug("GetUserByEmail: searching for email: %s", email)
 	query := `SELECT id, email, password_hash, role, created_at FROM users WHERE email = $1`
 
 	row := r.db.QueryRowContext(ctx, query, email)

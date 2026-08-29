@@ -30,6 +30,23 @@
 # ============================================================
 BINARY_NAME=subscription_app
 COVERAGE_FILE=coverage.out
+# ============================================================
+# LINT
+# ============================================================
+
+.PHONY: lint
+lint: ## Run golangci-lint
+	@echo "========================================="
+	@echo "  RUNNING LINTER"
+	@echo "========================================="
+	golangci-lint run ./...
+
+.PHONY: lint-fix
+lint-fix: ## Run golangci-lint with auto-fix
+	@echo "========================================="
+	@echo "  RUNNING LINTER WITH AUTO-FIX"
+	@echo "========================================="
+	golangci-lint run --fix ./...
 
 # ============================================================
 # TESTING
@@ -78,12 +95,12 @@ docker-up-redis: ## Start Redis only
 .PHONY: run
 run: docker-up-db docker-up-redis ## Start the server locally (DB + Redis via Docker)
 	@echo "[RUN] Starting server locally..."
-	go run cmd/api/main.go
+	go run cmd/api/main.go cmd/api/init.go cmd/api/servers.go cmd/api/helpers.go
 .PHONY: stop
 stop: ## Остановить локальный сервер
-	@echo "  Останавливаю локальный сервер..."
-	-pkill -f "go run cmd/api/main.go" || true
-	@echo "  Сервер остановлен"
+	@echo "Stopping server..."
+	@taskkill /F /IM go.exe 2>nul || true
+	@echo "Server stopped"
 
 # ============================================================
 # DOCKER
@@ -114,22 +131,18 @@ docker-logs-server: ## View logs from server container only
 # ============================================================
 
 .PHONY: migrate-up
-migrate-up: ## Apply all migrations (subscriptions + users)
-	@echo "========================================="
-	@echo "  APPLYING ALL MIGRATIONS"
-	@echo "========================================="
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_subscriptions_table.up.sql
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_users_table.up.sql
-	@echo "✅ Migrations applied."
+migrate-up:
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_users_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000004_create_subscription_templates_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_subscriptions_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000003_create_cache_control_user_table.up.sql
 
 .PHONY: migrate-down
-migrate-down: ## Rollback all migrations (users first, then subscriptions)
-	@echo "========================================="
-	@echo "  ROLLING BACK ALL MIGRATIONS"
-	@echo "========================================="
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_users_table.down.sql
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_subscriptions_table.down.sql
-	@echo "✅ All migrations rolled back."
+migrate-down:
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000004_create_subscription_templates_table.down.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000003_create_cache_control_user_table.down.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_subscriptions_table.down.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_users_table.down.sql
 
 .PHONY: migrate-down-users
 migrate-down-users: ## Rollback only users table

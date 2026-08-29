@@ -1,132 +1,281 @@
 // ============================================================
-// 1. ВЕРСИЯ ПРОТОКОЛА
+// 1. ОБЪЯВЛЕНИЕ ВЕРСИИ ПРОТОКОЛА
 // ============================================================
-// proto3 — текущая стабильная версия, используется везде.
-// proto2 — старая, не используй.
+// proto3 — это язык описания данных, который понимают все языки программирования.
+// Он не зависит от Go, Kotlin, Java, Python, C++ и т.д.
+// 
+// proto2 — старая версия, proto3 — текущая (используется везде).
+// Разница: в proto3 все поля опциональны по умолчанию, в proto2 нужно явно указывать.
+//
+// !!! ВАЖНО: эту строку НЕЛЬЗЯ менять — она определяет синтаксис, который будет использоваться.
 syntax = "proto3";
 
 // ============================================================
 // 2. ПАКЕТ (пространство имён)
 // ============================================================
-// Нужен, чтобы избежать конфликтов, если будет несколько .proto-файлов.
-// Обычно совпадает с названием сервиса.
+// Пакет — это как namespace в других языках.
+// Он нужен, чтобы избежать конфликтов, если в проекте будет несколько .proto-файлов.
+//
+// Например, если у нас будет ещё один сервис для "Пользователей" — его пакет будет user.
+// Тогда subscription.Subscription и user.Subscription — это разные типы.
+//
+// !!! ВАЖНО: пакет используется в сгенерированном коде как префикс для типов.
 package subscription;
 
 // ============================================================
 // 3. ОПЦИЯ go_package
 // ============================================================
 // Указывает, в какой пакет Go сгенерировать код.
-// Путь считается от корня проекта (где лежит go.mod).
+// 
+// go_package = "proto/subscription" означает:
+//   - Все сгенерированные файлы будут лежать в папке proto/subscription/
+//   - В Go-коде они будут импортироваться как: import "proto/subscription"
+//
+// Путь считается ОТ КОРНЯ ПРОЕКТА (там, где лежит go.mod).
+// 
+// !!! ВАЖНО: если путь не совпадает с реальной структурой папок — код не соберётся.
+// В нашем проекте файл лежит в proto/subscription.proto, а сгенерированный код будет
+// в proto/subscription/*.go — всё правильно.
 option go_package = "proto/subscription";
 
-// 5.1. Пустой запрос / ответ.
-// Используется, когда ничего передавать не нужно.
+// ============================================================
+// 4. ПУСТОЕ СООБЩЕНИЕ (Empty)
+// ============================================================
+// В gRPC каждый метод должен принимать и возвращать какое-то сообщение.
+// Но иногда нужно вернуть "ничего" (например, при успешном удалении).
+//
+// Empty — это "пустышка". В нём нет полей, только заголовок.
+// Используется для методов, которые не возвращают данных, но должны что-то вернуть,
+// чтобы удовлетворить синтаксис gRPC.
+//
+// Аналог в REST: HTTP 204 No Content.
 message Empty {}
+
 // ============================================================
-// 4. СЕРВИС (интерфейс API)
+// 5. СЕРВИС (главная часть — список всех RPC-методов)
 // ============================================================
-// Это как набор endpoint'ов в REST, но для gRPC.
+// Service — это интерфейс. Он описывает ВСЕ методы API, которые будут доступны
+// через gRPC.
+//
 // Каждый rpc — это один метод.
+// Формат: rpc <ИмяМетода> (Запрос) returns (Ответ);
+//
+// Имена методов должны быть глаголами (Create, Get, List, Update, Delete).
+// Это общепринятое соглашение для gRPC.
+//
+// !!! ВАЖНО: методы делятся на 2 группы по смыслу:
+//   1. Работа с ПОДПИСКАМИ (CRUD) — для пользователей
+//   2. Работа с ШАБЛОНАМИ (CRUD) — для администраторов
+//
+// Разделение такое же, как в REST-эндпоинтах:
+//   GET/POST /api/subscriptions      → работа с подписками
+//   GET/POST /api/admin/templates    → работа с шаблонами (только админ)
 service SubscriptionService {
   
-  // -------- 4.1. ПОЛУЧИТЬ ВСЕ ПОДПИСКИ (аналог GET /subscriptions) --------
-  // На вход: запрос (пагинация и офсет).
-  // На выход: список подписок.
+  // ============================================================
+  // 5.1. МЕТОДЫ ДЛЯ ПОДПИСОК (аналог REST-эндпоинтов /api/subscriptions)
+  // ============================================================
+  
+  // --- GET /api/subscriptions ---
+  // Получить список всех подписок (с пагинацией).
+  // На вход: limit (сколько записей), offset (сдвиг от начала).
+  // На выход: список подписок (SubscriptionList).
+  //
+  // В REST это выглядит так:
+  //   GET /api/subscriptions?limit=10&offset=0
   rpc GetSubscriptions (GetSubscriptionsRequest) returns (SubscriptionList);
 
-  // -------- 4.2. СОЗДАТЬ ПОДПИСКУ (аналог POST /subscriptions) --------
-  // На вход: данные новой подписки.
-  // На выход: ID созданной записи.
+  // --- POST /api/subscriptions ---
+  // Создать новую подписку.
+  // На вход: template_id, user_id, start_date, end_date.
+  // На выход: ID созданной подписки.
+  //
+  // В REST это выглядит так:
+  //   POST /api/subscriptions
+  //   Body: { "template_id": 1, "user_id": "...", "start_date": "08-2025", "end_date": "..." }
   rpc CreateSubscription (CreateRequest) returns (CreateResponse);
 
-  // -------- 4.3. ПОЛУЧИТЬ ОДНУ ПОДПИСКУ ПО ID (аналог GET /subscriptions/{id}) --
-  // На вход: ID.
-  // На выход: полная запись подписки.
+  // --- GET /api/subscriptions/{id} ---
+  // Получить одну подписку по её ID.
+  // На вход: id.
+  // На выход: полная запись подписки (Subscription).
+  //
+  // В REST это выглядит так:
+  //   GET /api/subscriptions/5
   rpc GetSubscription (GetRequest) returns (Subscription);
 
-  // -------- 4.4. ОБНОВИТЬ ПОДПИСКУ (аналог PUT /subscriptions/{id}) ----------
-  // На вход: ID + новые данные.
-  // На выход: ничего (Empty).
+  // --- PUT /api/subscriptions/{id} ---
+  // Обновить существующую подписку.
+  // На вход: id + новые поля.
+  // На выход: ничего (Empty), только статус успеха.
+  //
+  // В REST это выглядит так:
+  //   PUT /api/subscriptions/5
+  //   Body: { "template_id": 2, "user_id": "...", "start_date": "09-2025", ... }
   rpc UpdateSubscription (UpdateRequest) returns (Empty);
 
-  // -------- 4.5. УДАЛИТЬ ПОДПИСКУ (аналог DELETE /subscriptions/{id}) --------
-  // На вход: ID.
+  // --- DELETE /api/subscriptions/{id} ---
+  // Удалить подписку по ID.
+  // На вход: id.
   // На выход: ничего (Empty).
+  //
+  // В REST это выглядит так:
+  //   DELETE /api/subscriptions/5
   rpc DeleteSubscription (GetRequest) returns (Empty);
 
-  // -------- 4.6. СУММАРНАЯ СТОИМОСТЬ (аналог GET /subscriptions/total-cost) --
-  // На вход: фильтры (user_id, service_name, start_date, end_date).
-  // На выход: сумма (total).
+  // --- GET /api/subscriptions/total-cost ---
+  // Рассчитать суммарную стоимость подписок за период.
+  // На вход: user_id, service_name (опционально), start_date, end_date.
+  // На выход: total (число).
+  //
+  // В REST это выглядит так:
+  //   GET /api/subscriptions/total-cost?user_id=...&start_date=01-2025&end_date=12-2025
   rpc GetTotalCost (TotalCostRequest) returns (TotalCostResponse);
+
+  // ============================================================
+  // 5.2. МЕТОДЫ ДЛЯ ШАБЛОНОВ (аналог REST-эндпоинтов /api/admin/templates)
+  // ============================================================
+  // Эти методы должны быть доступны ТОЛЬКО администраторам.
+  // На уровне gRPC мы будем проверять роль через interceptor (authMiddleware).
+  
+  // --- GET /api/templates ---
+  // Получить список всех шаблонов (доступно всем авторизованным пользователям).
+  // На вход: ничего (Empty).
+  // На выход: список шаблонов (TemplateList).
+  rpc ListTemplates (Empty) returns (TemplateList);
+
+  // --- GET /api/templates/{id} ---
+  // Получить шаблон по ID.
+  // На вход: id.
+  // На выход: полная запись шаблона (Template).
+  rpc GetTemplate (GetRequest) returns (Template);
+
+  // --- POST /api/admin/templates ---
+  // Создать новый шаблон (только админ).
+  // На вход: service_name, price.
+  // На выход: ID созданного шаблона.
+  rpc CreateTemplate (CreateTemplateRequest) returns (CreateResponse);
+
+  // --- PUT /api/admin/templates/{id} ---
+  // Обновить шаблон (только админ).
+  // На вход: id + service_name, price.
+  // На выход: ничего (Empty).
+  rpc UpdateTemplate (UpdateTemplateRequest) returns (Empty);
+
+  // --- DELETE /api/admin/templates/{id} ---
+  // Удалить шаблон (только админ).
+  // На вход: id.
+  // На выход: ничего (Empty).
+  rpc DeleteTemplate (GetRequest) returns (Empty);
 }
 
 // ============================================================
-// 5. СООБЩЕНИЯ (структуры данных)
+// 6. СООБЩЕНИЯ (структуры данных)
+// ============================================================
+// Сообщения — это структуры с полями. Они используются в запросах и ответах.
+//
+// Формат: 
+//   message Имя { 
+//     тип имя_поля = номер_поля; 
+//   }
+//
+// Номера полей (1, 2, 3, ...) нужны для бинарной сериализации.
+// Они должны быть уникальными внутри сообщения.
+// Номера 1-15 занимают 1 байт, 16+ занимают 2 байта — поэтому важные поля имеют малые номера.
+
+// ============================================================
+// 6.1. ПОДПИСКИ
 // ============================================================
 
-
-
-// 5.2. Одна подписка (полная запись).
-// Повторяет структуру models.Subscription из твоего Go-кода.
+// Subscription — полное описание одной подписки.
+// Совпадает с models.Subscription в Go и Subscription в Kotlin.
 message Subscription {
-  int32  id           = 1;  // ID записи
-  string service_name = 2;  // Название сервиса
-  int32  price        = 3;  // Цена (в рублях)
+  int32  id           = 1;  // ID подписки (генерируется БД)
+  string service_name = 2;  // Название сервиса (из шаблона)
+  int32  price        = 3;  // Цена (из шаблона)
   string user_id      = 4;  // UUID пользователя
   string start_date   = 5;  // Дата начала (MM-YYYY)
-  string end_date     = 6;  // Дата окончания (MM-YYYY) — может быть пустой
+  string end_date     = 6;  // Дата окончания (MM-YYYY), может быть пустой
 }
 
-// 5.3. Список подписок (для GetSubscriptions).
+// SubscriptionList — список подписок.
+// Используется как ответ на GetSubscriptions.
 message SubscriptionList {
-  repeated Subscription subscriptions = 1;  // repeated = массив/слайс
+  repeated Subscription subscriptions = 1;  // repeated = массив (в Go это []Subscription)
 }
-// 5.4. Запрос на создание подписки.
-// Отличается от Subscription тем, что ID не передаём — генерирует БД.
+
+// CreateRequest — запрос на создание подписки.
+// Отличается от Subscription тем, что ID не передаётся (генерируется БД).
 message CreateRequest {
-  string service_name = 1;
-  int32  price        = 2;
-  string user_id      = 3;
-  string start_date   = 4;
-  string end_date     = 5;   // может быть пустым
+  int32  template_id = 1;   // ID шаблона (обязательно)
+  string user_id     = 2;   // UUID пользователя (берётся из JWT)
+  string start_date  = 3;   // Дата начала (обязательно, MM-YYYY)
+  string end_date    = 4;   // Дата окончания (опционально, MM-YYYY)
 }
 
-// 5.5. Ответ на создание.
-message CreateResponse {
-  int32 id = 1;   // вернём ID созданной записи
+// UpdateRequest — запрос на обновление подписки.
+message UpdateRequest {
+  int32  id          = 1;   // ID подписки (обязательно)
+  int32  template_id = 2;   // Новый ID шаблона
+  string user_id     = 3;   // UUID пользователя
+  string start_date  = 4;   // Новая дата начала
+  string end_date    = 5;   // Новая дата окончания
 }
 
-// 5.6. Запрос по ID (для Get и Delete).
+// GetRequest — запрос по ID (используется в GetSubscription и DeleteSubscription).
 message GetRequest {
   int32 id = 1;
 }
 
-// 5.7. Запрос на обновление подписки.
-// Включает ID + все поля, которые можно обновить.
-message UpdateRequest {
-  int32  id           = 1;
-  string service_name = 2;
-  int32  price        = 3;
-  string user_id      = 4;
-  string start_date   = 5;
-  string end_date     = 6;
+// CreateResponse — ответ на создание (возвращает ID).
+message CreateResponse {
+  int32 id = 1;   // ID созданной записи
 }
 
-// 5.8. Запрос на расчёт суммарной стоимости (аналог фильтров в total-cost).
-// Все поля опциональны — если не указаны, фильтрация не применяется.
-message TotalCostRequest {
-  string user_id      = 1;   // если пусто — все пользователи
-  string service_name = 2;   // если пусто — все сервисы
-  string start_date   = 3;   // обязательное поле
-  string end_date     = 4;   // если пусто — до "бесконечности" (2100-01-01)
-}
-
-// 5.9. Ответ на расчёт стоимости.
-message TotalCostResponse {
-  int32 total = 1;   // суммарная стоимость в рублях
-}
-// передаем в запрос о подписках пагинацию и офсет
+// GetSubscriptionsRequest — запрос на список подписок с пагинацией.
 message GetSubscriptionsRequest {
-  int32 limit = 1;
-  int32 offset = 2;
+  int32 limit  = 1;   // Сколько записей вернуть (по умолчанию 20)
+  int32 offset = 2;   // Сдвиг от начала (по умолчанию 0)
+}
+
+// TotalCostRequest — запрос на расчёт суммы.
+message TotalCostRequest {
+  string user_id      = 1;   // ID пользователя (опционально, если пусто — все)
+  string service_name = 2;   // Название сервиса (опционально, если пусто — все)
+  string start_date   = 3;   // Дата начала (обязательно, MM-YYYY)
+  string end_date     = 4;   // Дата окончания (обязательно, MM-YYYY)
+}
+
+// TotalCostResponse — ответ с суммой.
+message TotalCostResponse {
+  int32 total = 1;   // Суммарная стоимость в рублях
+}
+
+// ============================================================
+// 6.2. ШАБЛОНЫ
+// ============================================================
+
+// Template — шаблон подписки.
+message Template {
+  int32  id           = 1;   // ID шаблона
+  string service_name = 2;   // Название сервиса
+  int32  price        = 3;   // Цена (в рублях)
+}
+
+// TemplateList — список шаблонов.
+message TemplateList {
+  repeated Template templates = 1;
+}
+
+// CreateTemplateRequest — запрос на создание шаблона.
+message CreateTemplateRequest {
+  string service_name = 1;   // Название (обязательно)
+  int32  price        = 2;   // Цена (обязательно, >= 0)
+}
+
+// UpdateTemplateRequest — запрос на обновление шаблона.
+message UpdateTemplateRequest {
+  int32  id           = 1;   // ID шаблона (обязательно)
+  string service_name = 2;   // Новое название
+  int32  price        = 3;   // Новая цена
 }

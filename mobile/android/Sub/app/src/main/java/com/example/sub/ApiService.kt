@@ -32,6 +32,72 @@ object ApiService {
 
         return@withContext conn.responseCode == 201
     }
+    suspend fun deleteTemplate(context: Context, id: Int): Boolean = withContext(Dispatchers.IO) {
+        val url = URL("$BASE_URL/admin/templates/$id")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "DELETE"
+        conn.setRequestProperty("Authorization", "Bearer ${TokenManager.getToken(context)}")
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+
+        return@withContext conn.responseCode == 200
+    }
+    suspend fun updateTemplate(context: Context, id: Int, serviceName: String, price: Int): Boolean = withContext(Dispatchers.IO) {
+        val url = URL("$BASE_URL/admin/templates/$id")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "PUT"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer ${TokenManager.getToken(context)}")
+        conn.doOutput = true
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+
+        val body = JSONObject().apply {
+            put("service_name", serviceName)
+            put("price", price)
+        }
+
+        conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
+
+        return@withContext conn.responseCode == 200
+    }
+    suspend fun createTemplate(context: Context, serviceName: String, price: Int): Int? = withContext(Dispatchers.IO) {
+        val url = URL("$BASE_URL/admin/templates")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer ${TokenManager.getToken(context)}")
+        conn.doOutput = true
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+
+        val body = JSONObject().apply {
+            put("service_name", serviceName)
+            put("price", price)
+        }
+
+        conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
+
+        return@withContext if (conn.responseCode == 201) {
+            val json = conn.inputStream.bufferedReader().use { it.readText() }
+            JSONObject(json).getInt("id")
+        } else null
+    }
+    suspend fun getTemplates(context: Context): List<Template> = withContext(Dispatchers.IO) {
+        val url = URL("$BASE_URL/templates")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("Authorization", "Bearer ${TokenManager.getToken(context)}")
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+
+        return@withContext if (conn.responseCode == 200) {
+            val json = conn.inputStream.bufferedReader().use { it.readText() }
+            parseTemplates(json)
+        } else {
+            emptyList()
+        }
+    }
     suspend fun login(context: Context, email: String, password: String): Boolean =
         withContext(Dispatchers.IO) {
             val url = URL("$BASE_URL/login")
@@ -73,6 +139,29 @@ object ApiService {
         }
     }
 
+    suspend fun createSubscriptionFromTemplate(context: Context, templateId: Int, startDate: String, endDate: String): Int? = withContext(Dispatchers.IO) {
+        val url = URL("$BASE_URL/subscriptions")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer ${TokenManager.getToken(context)}")
+        conn.doOutput = true
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+
+        val body = JSONObject().apply {
+            put("template_id", templateId)
+            put("start_date", startDate)
+            put("end_date", endDate)
+        }
+
+        conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
+
+        return@withContext if (conn.responseCode == 201) {
+            val json = conn.inputStream.bufferedReader().use { it.readText() }
+            JSONObject(json).getInt("id")
+        } else null
+    }
     suspend fun createSubscription(context: Context, sub: Subscription): Int? = withContext(Dispatchers.IO) {
         val url = URL("$BASE_URL/subscriptions")
         val conn = url.openConnection() as HttpURLConnection
@@ -192,6 +281,22 @@ suspend fun updateSubscriptionFull(context: Context, id: Int, serviceName: Strin
             return@withContext conn.responseCode == 200
         }
 
+    private fun parseTemplates(json: String): List<Template> {
+    if (json == "null" || json.isEmpty()) return emptyList()
+        val result = mutableListOf<Template>()
+        val arr = JSONArray(json)
+        for (i in 0 until arr.length()) {
+            val obj = arr.getJSONObject(i)
+            result.add(
+                Template(
+                    id = obj.getInt("id"),
+                    serviceName = obj.getString("service_name"),
+                    price = obj.getInt("price")
+                )
+            )
+        }
+        return result
+    }
     private fun parseSubscriptions(json: String): List<Subscription> {
         val result = mutableListOf<Subscription>()
         val arr = JSONArray(json)

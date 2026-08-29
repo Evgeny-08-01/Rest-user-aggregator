@@ -9,13 +9,13 @@ import (
 )
 
 type MockSubRepo struct {
-	CreateMock       func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
-	GetSubByIDMock   func(ctx context.Context, id int) (*models.Subscription, error)
-	UpdateSubMock    func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
-	DeleteSubMock    func(ctx context.Context, id int) error
-	ListSubMock      func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
-	GetTotalCostMock func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
-	GetCacheUserVersionMock      func(ctx context.Context, userID string) (int, error)
+	CreateMock                    func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
+	GetSubByIDMock                func(ctx context.Context, id int) (*models.Subscription, error)
+	UpdateSubMock                 func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
+	DeleteSubMock                 func(ctx context.Context, id int) error
+	ListSubMock                   func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
+	GetTotalCostMock              func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
+	GetCacheUserVersionMock       func(ctx context.Context, userID string) (int, error)
 	IncrementCacheUserVersionMock func(ctx context.Context, userID string) error
 }
 
@@ -71,6 +71,58 @@ func (m *MockSubRepo) GetCacheUserVersion(ctx context.Context, userID string) (i
 func (m *MockSubRepo) IncrementCacheUserVersion(ctx context.Context, userID string) error {
 	if m.IncrementCacheUserVersionMock != nil {
 		return m.IncrementCacheUserVersionMock(ctx, userID)
+	}
+	return nil
+}
+
+// MockTemplateRepo — мок для TemplateRepository
+type MockTemplateRepo struct {
+	CreateTemplateFunc    func(ctx context.Context, serviceName string, price int) (int, error)
+	ListTemplatesFunc     func(ctx context.Context) ([]models.Template, error)
+	GetTemplateByIDFunc   func(ctx context.Context, id int) (*models.Template, error)
+	GetTemplateByNameFunc func(ctx context.Context, serviceName string) (*models.Template, error)
+	UpdateTemplateFunc    func(ctx context.Context, id int, serviceName string, price int) error
+	DeleteTemplateFunc    func(ctx context.Context, id int) error
+}
+
+func (m *MockTemplateRepo) CreateTemplate(ctx context.Context, serviceName string, price int) (int, error) {
+	if m.CreateTemplateFunc != nil {
+		return m.CreateTemplateFunc(ctx, serviceName, price)
+	}
+	return 1, nil
+}
+
+func (m *MockTemplateRepo) ListTemplates(ctx context.Context) ([]models.Template, error) {
+	if m.ListTemplatesFunc != nil {
+		return m.ListTemplatesFunc(ctx)
+	}
+	return []models.Template{}, nil
+}
+
+func (m *MockTemplateRepo) GetTemplateByID(ctx context.Context, id int) (*models.Template, error) {
+	if m.GetTemplateByIDFunc != nil {
+		return m.GetTemplateByIDFunc(ctx, id)
+	}
+	return &models.Template{ID: id, ServiceName: "TestTemplate", Price: 100}, nil
+}
+
+func (m *MockTemplateRepo) GetTemplateByName(ctx context.Context, serviceName string) (*models.Template, error) {
+	if m.GetTemplateByNameFunc != nil {
+		return m.GetTemplateByNameFunc(ctx, serviceName)
+	}
+	return nil, nil
+}
+
+func (m *MockTemplateRepo) UpdateTemplate(ctx context.Context, id int, serviceName string, price int) error {
+	if m.UpdateTemplateFunc != nil {
+		return m.UpdateTemplateFunc(ctx, id, serviceName, price)
+	}
+	return nil
+}
+
+func (m *MockTemplateRepo) DeleteTemplate(ctx context.Context, id int) error {
+	if m.DeleteTemplateFunc != nil {
+		return m.DeleteTemplateFunc(ctx, id)
 	}
 	return nil
 }

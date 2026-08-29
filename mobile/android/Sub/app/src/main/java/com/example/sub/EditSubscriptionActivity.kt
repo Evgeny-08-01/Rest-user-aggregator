@@ -98,7 +98,8 @@ class EditSubscriptionActivity : AppCompatActivity() {
                     originalPrice = sub.price
                     originalUserId = sub.userId
 
-                    if (isStartDatePastOrToday(sub.startDate)) {
+                    // Блокируем start_date, если она уже наступила
+                    if (isStartDateInPast(sub.startDate)) {
                         etStartDate.isEnabled = false
                         etStartDate.alpha = 0.5f
                         Toast.makeText(
@@ -115,18 +116,17 @@ class EditSubscriptionActivity : AppCompatActivity() {
         }
     }
 
-    private fun isStartDatePastOrToday(dateStr: String): Boolean {
+    private fun isStartDateInPast(dateStr: String): Boolean {
         return try {
             val sdf = SimpleDateFormat("MM-yyyy", Locale.getDefault())
             val date = sdf.parse(dateStr) ?: return false
-            val calendar = Calendar.getInstance()
             val today = Calendar.getInstance()
             today.set(Calendar.DAY_OF_MONTH, 1)
             today.set(Calendar.HOUR_OF_DAY, 0)
             today.set(Calendar.MINUTE, 0)
             today.set(Calendar.SECOND, 0)
             today.set(Calendar.MILLISECOND, 0)
-            !date.before(today.time)
+            date.before(today.time)
         } catch (e: Exception) {
             false
         }

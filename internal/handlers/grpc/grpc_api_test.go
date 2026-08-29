@@ -1,4 +1,4 @@
-//go:build unit
+//g o:build unit
 
 package grpcserver
 
@@ -11,6 +11,7 @@ import (
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/service"
 	"github.com/stretchr/testify/assert"
+	"Rest-user-agregator/internal/repository"
 )
 
 type mockRepo struct {
@@ -94,11 +95,16 @@ func TestGetSubscription(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+templateRepo := &repository.MockTemplateRepo{}
+svc := service.NewSubscriptionService(repo, templateRepo)
+templateSvc := service.NewTemplateService(templateRepo)  
+server := NewSubscriptionServer(svc, templateSvc)  
+
+    ctx := context.WithValue(context.Background(), "user_id", "test-user")
+    ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.GetRequest{Id: 1}
-	resp, err := server.GetSubscription(context.Background(), req)
+	resp, err := server.GetSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -116,11 +122,15 @@ func TestGetSubscriptions(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+templateRepo := &repository.MockTemplateRepo{}
+svc := service.NewSubscriptionService(repo, templateRepo)
+templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
+server := NewSubscriptionServer(svc, templateSvc)  
+ctx := context.WithValue(context.Background(), "user_id", "test-user")
+ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.GetSubscriptionsRequest{Limit: 10, Offset: 0}
-	resp, err := server.GetSubscriptions(context.Background(), req)
+	resp, err := server.GetSubscriptions(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -135,17 +145,21 @@ func TestCreateSubscription(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+templateRepo := &repository.MockTemplateRepo{}
+svc := service.NewSubscriptionService(repo, templateRepo)
+templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
+server := NewSubscriptionServer(svc, templateSvc)  
 
 	req := &pb.CreateRequest{
-		ServiceName: "Test Create",
-		Price:       150,
-		UserId:      "test-user",
-		StartDate:   "01-2025",
-		EndDate:     "12-2025",
-	}
-	resp, err := server.CreateSubscription(context.Background(), req)
+    TemplateId: 1,
+    UserId:     "test-user",
+    StartDate:  "01-2029",
+    EndDate:    "12-2029",
+}
+    ctx := context.WithValue(context.Background(), "user_id", "test-user")
+    ctx = context.WithValue(ctx, "role", "user")
+
+	resp, err := server.CreateSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -153,41 +167,66 @@ func TestCreateSubscription(t *testing.T) {
 }
 
 func TestUpdateSubscription(t *testing.T) {
-	repo := &mockRepo{
-		updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
-			return nil
-		},
-	}
+    repo := &mockRepo{
+        updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
+            return nil
+        },
+        getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
+            return &models.Subscription{
+                ID:          id,
+                ServiceName: "Test",
+                UserID:      "test-user",  // ← должен совпадать с user_id из контекста
+                StartDate:   "10-2026",
+                EndDate:     "12-2026",
+            }, nil
+        },
+    }
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+
+templateRepo := &repository.MockTemplateRepo{}
+svc := service.NewSubscriptionService(repo, templateRepo)
+templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
+server := NewSubscriptionServer(svc, templateSvc)  
 
 	req := &pb.UpdateRequest{
-		Id:          1,
-		ServiceName: "Updated",
-		Price:       200,
-		UserId:      "test-user",
-		StartDate:   "01-2025",
-		EndDate:     "12-2025",
-	}
-	resp, err := server.UpdateSubscription(context.Background(), req)
+    Id:         1,
+    TemplateId: 1,
+    UserId:     "test-user",
+    StartDate:  "01-2029",
+    EndDate:    "12-2029",
+}
+ctx := context.WithValue(context.Background(), "user_id", "test-user")
+ctx = context.WithValue(ctx, "role", "user")
+
+	resp, err := server.UpdateSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 }
 
 func TestDeleteSubscription(t *testing.T) {
-	repo := &mockRepo{
-		deleteFunc: func(ctx context.Context, id int) error {
-			return nil
-		},
-	}
-
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+    repo := &mockRepo{
+        deleteFunc: func(ctx context.Context, id int) error {
+            return nil
+        },
+        // ✅ Добавить мок GetSubscriptionByID
+        getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
+            return &models.Subscription{
+                ID:          id,
+                ServiceName: "Test",
+                UserID:      "test-user",  // ← должен совпадать с user_id из контекста
+            }, nil
+        },
+    }
+templateRepo := &repository.MockTemplateRepo{}
+svc := service.NewSubscriptionService(repo, templateRepo)
+templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
+server := NewSubscriptionServer(svc, templateSvc)  
+ctx := context.WithValue(context.Background(), "user_id", "test-user")
+ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.GetRequest{Id: 1}
-	resp, err := server.DeleteSubscription(context.Background(), req)
+	resp, err := server.DeleteSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -200,16 +239,20 @@ func TestGetTotalCost(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+templateRepo := &repository.MockTemplateRepo{}
+svc := service.NewSubscriptionService(repo, templateRepo)
+templateSvc := service.NewTemplateService(templateRepo)  // ← добавить
+server := NewSubscriptionServer(svc, templateSvc)  
+ctx := context.WithValue(context.Background(), "user_id", "test-user")
+ctx = context.WithValue(ctx, "role", "user")
 
 	req := &pb.TotalCostRequest{
 		UserId:      "test-user",
 		ServiceName: "",
-		StartDate:   "01-2025",
-		EndDate:     "12-2025",
+		StartDate:   "01-2029",
+		EndDate:     "12-2029",
 	}
-	resp, err := server.GetTotalCost(context.Background(), req)
+	resp, err := server.GetTotalCost(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)

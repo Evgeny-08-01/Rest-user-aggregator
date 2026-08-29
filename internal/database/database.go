@@ -18,7 +18,7 @@ import (
 // db -пакетная переменная (уровня пакета) с соединением с БД. Доступна только внутри пакета database (приватная).
 var db *sql.DB
 
-/// Init открывает соединение с БД и настраивает пул соединений
+// / Init открывает соединение с БД и настраивает пул соединений
 func Init(databasePath string) error {
 	// 1. ОТКРЫВАЕМ СОЕДИНЕНИЕ (структуру)
 	//    sql.Open НЕ создаёт физическое соединение, только структуру *sql.DB.
@@ -88,50 +88,53 @@ func Init(databasePath string) error {
 	logger.Info("Database connected successfully")
 	return nil
 }
+
 // Close закрывает соединение с базой данных
 func Close() error {
-    if db == nil {
-        return nil
-    }
-    err := db.Close()
-    if err != nil {
-        logger.Error("Failed to close database connection: %v", err)
-        return err
-    }
-    logger.Debug("Database connection closed")
-    return nil
+	if db == nil {
+		return nil
+	}
+	err := db.Close()
+	if err != nil {
+		logger.Error("Failed to close database connection: %v", err)
+		return err
+	}
+	logger.Debug("Database connection closed")
+	return nil
 }
 
-// PostgresRepo структура - реализует интерфейс SubscriptionRepository....и это структура, 
+// PostgresRepo структура - реализует интерфейс SubscriptionRepository....и это структура,
 // которая содержит в себе подключение к базе данных *sql.DB и предоставляет методы для выполнения
-//  всех SQL-запросов из пакета interface 
 //
+//	всех SQL-запросов из пакета interface
 type PostgresRepo struct {
-    db *sql.DB
+	db *sql.DB
 }
+
 // ЯВНАЯ ПРОВЕРКА: гарантирует, что PostgresRepo реализует интерфейс repository.SubscriptionRepository
 var _ repository.SubscriptionRepository = (*PostgresRepo)(nil)
 
-// NewPostgresRepo - конструктор(обертка)- возвращает указатель на структуру PostgresRepo, 
-// которая содержит пул соединений и все методы для работы с БД 
+// NewPostgresRepo - конструктор(обертка)- возвращает указатель на структуру PostgresRepo,
+// которая содержит пул соединений и все методы для работы с БД
 func NewPostgresRepo() *PostgresRepo {
-	 if db == nil {
-        logger.Error("Database not initialized. Call Init() first")
-        return nil
-    }
-    return &PostgresRepo{db: db}
+	if db == nil {
+		logger.Error("Database not initialized. Call Init() first")
+		return nil
+	}
+	return &PostgresRepo{db: db}
 }
 
 // GetDB - для тестов возвращает соединение с БД
 func GetDB() *sql.DB {
-    return db
+	return db
 }
+/////////////////////// функции под тесты/////////////////////////////////////
 func CreateTestTable() error {
     if db == nil {
         return errors.New("database not initialized")
     }
 
-    // Создаём users
+    // 1. Создаём users
     _, err := db.Exec(`
         CREATE TABLE IF NOT EXISTS users (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -146,15 +149,28 @@ func CreateTestTable() error {
         return err
     }
 
-    // Создаём subscriptions
+    // 2. Создаём subscription_templates
+    _, err = db.Exec(`
+        CREATE TABLE IF NOT EXISTS subscription_templates (
+            id SERIAL PRIMARY KEY,
+            service_name TEXT NOT NULL,
+            price INTEGER NOT NULL CHECK (price >= 0)
+        )
+    `)
+    if err != nil {
+        logger.Error("CreateTestTable: failed to create subscription_templates: %v", err)
+        return err
+    }
+
+    // 3. Создаём subscriptions (правильная структура, без service_name и price)
     _, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS subscriptions (
             id SERIAL PRIMARY KEY,
-            service_name VARCHAR(255) NOT NULL,
-            price INTEGER NOT NULL,
             user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            template_id INTEGER REFERENCES subscription_templates(id) ON DELETE SET NULL,
             start_date DATE NOT NULL,
-            end_date DATE
+            end_date DATE,
+            UNIQUE (user_id, template_id)
         )
     `)
     if err != nil {
@@ -162,7 +178,7 @@ func CreateTestTable() error {
         return err
     }
 
-    // Создаём cache_control_user
+    // 4. Создаём cache_control_user
     _, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS cache_control_user (
             user_id UUID PRIMARY KEY,
@@ -177,83 +193,87 @@ func CreateTestTable() error {
     logger.Debug("CreateTestTable: all tables created or already exists")
     return nil
 }
+
 // DropTestTable — удаляет тестовые таблицы, если они существуют
 func DropTestTable() error {
-    if db == nil {
-        return errors.New("database not initialized")
-    }
+	if db == nil {
+		return errors.New("database not initialized")
+	}
 
-    // Удаляем таблицы в обратном порядке (из-за зависимостей)
-    _, err := db.Exec("DROP TABLE IF EXISTS cache_control_user CASCADE")
-    if err != nil {
-        logger.Error("DropTestTable: failed to drop cache_control_user: %v", err)
-        return err
-    }
+	// Удаляем таблицы в обратном порядке (из-за зависимостей)
+	_, err := db.Exec("DROP TABLE IF EXISTS cache_control_user CASCADE")
+	if err != nil {
+		logger.Error("DropTestTable: failed to drop cache_control_user: %v", err)
+		return err
+	}
 
-    _, err = db.Exec("DROP TABLE IF EXISTS users CASCADE")
-    if err != nil {
-        logger.Error("DropTestTable: failed to drop users: %v", err)
-        return err
-    }
+	_, err = db.Exec("DROP TABLE IF EXISTS users CASCADE")
+	if err != nil {
+		logger.Error("DropTestTable: failed to drop users: %v", err)
+		return err
+	}
 
-    _, err = db.Exec("DROP TABLE IF EXISTS subscriptions CASCADE")
-    if err != nil {
-        logger.Error("DropTestTable: failed to drop subscriptions: %v", err)
-        return err
-    }
+	_, err = db.Exec("DROP TABLE IF EXISTS subscriptions CASCADE")
+	if err != nil {
+		logger.Error("DropTestTable: failed to drop subscriptions: %v", err)
+		return err
+	}
 
-    logger.Debug("DropTestTable: all tables dropped successfully")
-    return nil
+	logger.Debug("DropTestTable: all tables dropped successfully")
+	return nil
 }
+
 // CleanTestTable очищает таблицу перед тестами
 func CleanTestTable() error {
-    if db == nil {
-        err := errors.New("database not initialized")
-        logger.Error("CleanTestTable: %v", err)
-        return err
-    }
-    _, err := db.Exec("TRUNCATE subscriptions, users, cache_control_user RESTART IDENTITY")
-    if err != nil {
-        logger.Error("CleanTestTable: failed to truncate tables: %v", err)
-        return err
-    }
+	if db == nil {
+		err := errors.New("database not initialized")
+		logger.Error("CleanTestTable: %v", err)
+		return err
+	}
+	_, err := db.Exec("TRUNCATE subscriptions, users, cache_control_user, subscription_templates RESTART IDENTITY")
+	if err != nil {
+		logger.Error("CleanTestTable: failed to truncate tables: %v", err)
+		return err
+	}
 
-    // Очищаем Redis: удаляем все ключи с префиксом total:
-    client := cache.GetClient()
-    if client != nil {
-        ctx := context.Background()
-        iter := client.Scan(ctx, 0, "total:*", 0).Iterator()
-        for iter.Next(ctx) {
-            if err := client.Del(ctx, iter.Val()).Err(); err != nil {
-                logger.Warn("CleanTestTable: failed to delete key %s: %v", iter.Val(), err)
-            }
-        }
-        if err := iter.Err(); err != nil {
-            logger.Warn("CleanTestTable: Redis scan error: %v", err)
-        } else {
-            logger.Debug("CleanTestTable: Redis keys with prefix total:* deleted")
-        }
-    }
+	// Очищаем Redis: удаляем все ключи с префиксом total:
+	client := cache.GetClient()
+	if client != nil {
+		ctx := context.Background()
+		iter := client.Scan(ctx, 0, "total:*", 0).Iterator()
+		for iter.Next(ctx) {
+			if err := client.Del(ctx, iter.Val()).Err(); err != nil {
+				logger.Warn("CleanTestTable: failed to delete key %s: %v", iter.Val(), err)
+			}
+		}
+		if err := iter.Err(); err != nil {
+			logger.Warn("CleanTestTable: Redis scan error: %v", err)
+		} else {
+			logger.Debug("CleanTestTable: Redis keys with prefix total:* deleted")
+		}
+	}
 
-    logger.Debug("CleanTestTable: tables truncated successfully")
-    return nil
+	logger.Debug("CleanTestTable: tables truncated successfully")
+	return nil
 }
+
 // DeleteSubscriptionsByUserID удаляет все подписки пользователя (для тестов)
 func DeleteSubscriptionsByUserID(userID string) error {
-    if db == nil {
-        err := errors.New("database not initialized")
-        logger.Error("DeleteSubscriptionsByUserID: %v", err)
-        return err
-    }
+	if db == nil {
+		err := errors.New("database not initialized")
+		logger.Error("DeleteSubscriptionsByUserID: %v", err)
+		return err
+	}
 
-    _, err := db.Exec("DELETE FROM subscriptions WHERE user_id = $1", userID)
-    if err != nil {
-        logger.Error("DeleteSubscriptionsByUserID: failed to delete for user_id=%s: %v", userID, err)
-        return err
-    }
-    logger.Debug("DeleteSubscriptionsByUserID: deleted subscriptions for user_id=%s", userID)
-    return nil
+	_, err := db.Exec("DELETE FROM subscriptions WHERE user_id = $1", userID)
+	if err != nil {
+		logger.Error("DeleteSubscriptionsByUserID: failed to delete for user_id=%s: %v", userID, err)
+		return err
+	}
+	logger.Debug("DeleteSubscriptionsByUserID: deleted subscriptions for user_id=%s", userID)
+	return nil
 }
+
 // PingWithContext проверяет соединение с PostgreSQL с контекстом
 func PingWithContext(ctx context.Context) error {
 	if db == nil {

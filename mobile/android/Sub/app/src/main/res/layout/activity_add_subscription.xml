@@ -13,26 +13,26 @@
         android:textStyle="bold"
         android:layout_marginBottom="24dp"/>
 
-    <EditText
-        android:id="@+id/etServiceName"
-        android:layout_width="match_parent"
+    <TextView
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:hint="Название сервиса"
-        android:layout_marginBottom="12dp"/>
+        android:text="Выберите шаблон:"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
 
-    <EditText
-        android:id="@+id/etPrice"
+    <Spinner
+        android:id="@+id/spinnerTemplates"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Цена"
-        android:inputType="number"
-        android:layout_marginBottom="12dp"/>
+        android:layout_marginBottom="16dp"/>
 
     <EditText
         android:id="@+id/etStartDate"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="Дата начала (MM-YYYY)"
+        android:text="08-2025"
         android:layout_marginBottom="12dp"/>
 
     <EditText

@@ -14,8 +14,9 @@ import (
 	"github.com/joho/godotenv"
 )
 var (
-    svc     *service.SubscriptionService
-    authSvc *service.AuthService
+    svc         *service.SubscriptionService
+    authSvc     *service.AuthService
+    templateSvc *service.TemplateService  // ← добавить
 )
 // ============================================================
 // 1. ПРОВЕРКА ЗАВИСИМОСТЕЙ (выполняется ПЕРВОЙ!)
@@ -42,9 +43,11 @@ func TestMain(m *testing.M) {
         panic("Failed to init DB: " + err.Error())
     }
 
-	repo := database.NewPostgresRepo()
-	svc = service.NewSubscriptionService(repo)
-	authSvc = service.NewAuthService(repo)
+repo := database.NewPostgresRepo()
+templateRepo := database.NewPostgresRepo()
+svc = service.NewSubscriptionService(repo, templateRepo)
+templateSvc = service.NewTemplateService(templateRepo)
+authSvc = service.NewAuthService(repo)
 
 	// Запуск тестов
 	code := m.Run()
@@ -91,7 +94,7 @@ func TestCreateRESTServerWithCustomPort(t *testing.T) {
 }
 
 func TestCreateGRPCServer(t *testing.T) {
-    srv, lis, err := createGRPCServer(svc)
+    srv, lis, err := createGRPCServer(svc, templateSvc)
     
     // ДОБАВИТЬ: закрываем listener после теста
     if lis != nil {
@@ -113,7 +116,7 @@ func TestCreateGRPCServerWithCustomPort(t *testing.T) {
 	os.Setenv("GRPC_PORT", "9999")
 	defer os.Setenv("GRPC_PORT", oldPort)
 
-	srv, lis, err := createGRPCServer(svc)
+	srv, lis, err := createGRPCServer(svc, templateSvc)
 
 	if err != nil {
 		t.Logf("createGRPCServer error: %v", err)
@@ -134,7 +137,7 @@ func TestCreateGRPCServerError(t *testing.T) {
 	os.Setenv("GRPC_PORT", "50051")
 	defer os.Setenv("GRPC_PORT", oldPort)
 
-	srv, lis, err := createGRPCServer(svc)
+	srv, lis, err := createGRPCServer(svc, templateSvc)
 
 	if err == nil {
 		t.Log("Port 50051 is free, skipping error test")
@@ -230,7 +233,7 @@ func TestRunServersWithContext(t *testing.T) {
 
     errCh := make(chan error, 1)
     go func() {
-        errCh <- runServersWithContext(ctx, svc, authSvc)
+        errCh <- runServersWithContext(ctx, svc, authSvc, templateSvc)
     }()
 
     select {
@@ -244,10 +247,10 @@ func TestRunServersWithContext(t *testing.T) {
     }
 }
 func TestBuildServices(t *testing.T) {
-    s, a := buildServices()
-    if s == nil {
-        t.Error("SubscriptionService is nil")
-    }
+   _, a, ts := buildServices()
+if ts == nil {
+    t.Error("TemplateService is nil")
+}
     if a == nil {
         t.Error("AuthService is nil")
     }
