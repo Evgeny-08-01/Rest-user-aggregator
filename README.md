@@ -2,7 +2,7 @@
 
 [![CI/CD](https://github.com/Evgeny-08-01/Rest-user-agregator/actions/workflows/workflows.yml/badge.svg)](https://github.com/Evgeny-08-01/Rest-user-agregator/actions)
 
-**📄 Техническое задание:** [Посмотреть ТЗ](./technical%20requirements/technical%20requirements.txt)
+**📄 Техническое задание:** [Посмотреть ТЗ](./technical_requirements/technical_requirements.txt)
 
 REST API сервис для агрегации данных онлайн подписок пользователей.
 
@@ -71,7 +71,7 @@ REST API сервис для агрегации данных онлайн под
   - Автоматическая публикация Docker-образа в Docker Hub
 - **Docker + Docker Compose** (контейнеризация)
 
-## Логирование
+### Логирование
 
 Поддерживаются уровни логирования:
 - `DEBUG` — для отладки (не используется в продакшене)
@@ -82,7 +82,7 @@ REST API сервис для агрегации данных онлайн под
 
 Уровень задаётся переменной `LOG_LEVEL` в `.env`
 
-## Graceful Shutdown
+### Graceful Shutdown
 
 При получении сигналов SIGINT (Ctrl+C) или SIGTERM сервер:
 1. Перестаёт принимать новые соединения
@@ -93,7 +93,7 @@ REST API сервис для агрегации данных онлайн под
    - Код 1 — если произошла ошибка при старте или остановке.
 
 
-## Запуск
+### Запуск
 
 ### Через Docker Compose (рекомендуется)
 
@@ -146,45 +146,54 @@ make run
 | `make migrate-down-users` | Откатить только таблицу `users`         |
 | `make migrate-down-subs`  | Откатить только таблицу `subscriptions` |
 
-### Линтер
-
-| Команда         | Описание                                     |                   
-|-----------------|----------------------------------------------|
-| `make lint`     | Запустить `golangci-lint`                    |
-| `make lint-fix` | Запустить `golangci-lint` с автоисправлением |
 
 ### Android (мобильное приложение)
-
+```
 | Команда              | Описание                                                    |
 -------------------------------------------------------------------------------------|
 | `make adb-reverse`   | Пробросить порты 8087 и 50051 для отладки на телефоне (USB) |
+```
 
 ---
 
-## 🚀 Быстрый старт
+### 3. Проверить работу
 
-
-# 1. Клонировать репозиторий
-git clone https://github.com/Evgeny-08-01/Rest-user-agregator.git
-
-# 2. Запустить сервер (БД и Redis поднимутся автоматически)
-make run
-
-# 3. Проверить работу
+**REST API:**
+```bash
 curl http://localhost:8087/health
-# {"status":"ok"}
 
-# 4. Остановить сервер
+ {"status":"ok"}
+```
+gRPC API: (доступен на порту 50051)
+grpcurl -plaintext localhost:50051 list
+
+# subscription.SubscriptionService
+4. Остановить сервер
+
 make stop
 
-Сервер будет доступен по адресу: http://localhost:8087
+Сервер будет доступен по адресу:
 
-### Локальный запуск (без Docker)
+REST: http://localhost:8087
 
-Установите PostgreSQL и создайте базу данных `subscriptions`.
+gRPC: localhost:50051
 
-Создайте файл `.env` в корне проекта 
+
+## 📌 Если `grpcurl` не установлен:
+
 ```bash
+Установить grpcurl
+go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+```
+### Локальный запуск (без Docker)
+```
+Установите PostgreSQL и создайте базу данных `subscriptions`.
+Создайте файл `.env` в корне проекта (скопируйте из `.env.example`):
+(Все показанные пароли демонстрационные, но соответствуют настройкам проекта)
+⚠️ **Внимание:** Все пароли в этом файле — **демонстрационные**.  
+Для продакшена используйте реальные секреты и **не коммитьте `.env`** в репозиторий.
+```
+```
 DB_PATH=postgres://postgres:1771@db:5432/subscriptions?sslmode=disable
 SERVER_PORT=8087
 POSTGRES_PORT=5432
@@ -200,15 +209,17 @@ LOGGER=debug
 PPROF_ENABLED=false
 GRPC_PORT=50051
 ```
-Запустите сервер локально:
-make run
-Или вручную:
+#### Запустите сервер локально:
+```
+     make run
+```     
+#### Или вручную:
 ```bash
 docker-compose up -d db redis
 go run cmd/api/main.go cmd/api/init.go cmd/api/servers.go cmd/api/helpers.go
 ```
 
-## 🌐 API Endpoints
+### 🌐 API Endpoints
 
 ### REST API
 
@@ -270,89 +281,121 @@ go run cmd/api/main.go cmd/api/init.go cmd/api/servers.go cmd/api/helpers.go
 | POST  | `/api/login`    | Вход, получение JWT-токена      |
 
 ### Регистрация пользователя
-```bash
+```
 curl -X POST http://localhost:8087/api/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"123456","role":"user"}'
  ```
 ###   Регистрация админа (только через БД)
+```
 docker exec -it subscription-db psql -U postgres -d subscriptions -c "INSERT INTO users (id, email, password_hash, role) VALUES (gen_random_uuid(), 'admin@example.com', '$2a$10$8dXxWmxnKk59pdXdy44l/eb4g1PnaFenHN3B.4lLR4bRy4ZL4xjK.', 'admin') ON CONFLICT (email) DO NOTHING;"
+```
 Вход (логин)
+```
 curl -X POST http://localhost:8087/api/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"123456"}'
+ ``` 
   Ответ:
+```  
 {
     "token": "eyJhbGciOiJIUzI1NiIs...",
     "email": "user@example.com",
     "role": "user"
 }  
+```
 ### 📋 Управление подписками
 
 Заголовок для всех запросов (кроме регистрации и логина):
 Authorization: Bearer <jwt_token>
 ##### Эндпоинты подписок
 Метод	Эндпоинт	Описание
+```
 GET	/api/subscriptions	Получить список подписок
 GET	/api/subscriptions/{id}	Получить подписку по ID
 POST	/api/subscriptions	Создать подписку
 PUT	/api/subscriptions/{id}	Обновить подписку
 DELETE	/api/subscriptions/{id}	Удалить подписку
 GET	/api/subscriptions/total-cost	Суммарная стоимость за период
+```
 Получить список всех подписок
+```
 curl -X GET http://localhost:8087/api/subscriptions \
   -H "Authorization: Bearer <jwt_token>"
+```
 Получить подписку по ID
+```
 curl -X GET http://localhost:8087/api/subscriptions/1 \
   -H "Authorization: Bearer <jwt_token>"
+```
 Создать подписку
+```
 curl -X POST http://localhost:8087/api/subscriptions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"template_id":1,"start_date":"09-2026","end_date":"12-2026"}'
+```
 Обновить подписку
+```
 curl -X PUT http://localhost:8087/api/subscriptions/1 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"start_date":"10-2026","end_date":"12-2026"}'
+```
 Удалить подписку
+```
 curl -X DELETE http://localhost:8087/api/subscriptions/1 \
   -H "Authorization: Bearer <jwt_token>"
+```
 Получить суммарную стоимость за период
+```
 curl -X GET "http://localhost:8087/api/subscriptions/total-cost?start_date=08-2026&end_date=09-2026" \
   -H "Authorization: Bearer <jwt_token>"
+```
 ### 📋 Управление шаблонами (только для админа)
 Заголовок:
 Authorization: Bearer <jwt_token>
 #### Эндпоинты шаблонов
-Метод	Эндпоинт	Описание
-GET	/api/templates	Получить список всех шаблонов
-POST	/api/admin/templates	Создать шаблон
-PUT	/api/admin/templates/{id}	Обновить шаблон
-DELETE	/api/admin/templates/{id}	Удалить шаблон
+```
+Метод	    Эндпоинт	                    Описание
+GET	      /api/templates	              Получить список всех шаблонов
+POST	    /api/admin/templates	        Создать шаблон
+PUT	      /api/admin/templates/{id}	    Обновить шаблон
+DELETE	  /api/admin/templates/{id}	    Удалить шаблон
+```
 Получить список всех шаблонов
+```
 curl -X GET http://localhost:8087/api/templates \
   -H "Authorization: Bearer <jwt_token>"
+```
 Создать шаблон
+```
 curl -X POST http://localhost:8087/api/admin/templates \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"service_name":"Яндекс Плюс","price":400}'
+```
 Обновить шаблон
+```
 curl -X PUT http://localhost:8087/api/admin/templates/1 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"service_name":"Яндекс Плюс Премиум","price":500}'
+```
 Удалить шаблон
+```
 curl -X DELETE http://localhost:8087/api/admin/templates/1 \
   -H "Authorization: Bearer <jwt_token>"
+```
 ℹ️ Дополнительные эндпоинты
-Метод	Эндпоинт	Описание
-GET	/health	Проверка работоспособности сервера
-GET	/api/config	Конфигурация для фронтенда
+Метод             	Эндпоинт	        Описание
+GET	               /health	          Проверка работоспособности сервера
+GET	               /api/config	      Конфигурация для фронтенда
 Пример:
-curl http://localhost:8087/health
+
+```curl http://localhost:8087/health
 {"status":"ok"}
+```
  
 ## 🖥️ Фронтенд
 
@@ -418,6 +461,7 @@ curl http://localhost:8087/health
 Подключи телефон по USB и выполни:
 adb install mobile/Sub.apk
 ####  Шаг 3. Настрой сетевой проброс
+```
 Запусти сервер
 docker-compose up -d или
 make run (локально)
@@ -425,12 +469,11 @@ make run (локально)
 adb reverse tcp:8087 tcp:8087
 Запусти приложение
 Открой приложение на телефоне и войди.
-
+```
 ## 🌐 CORS
 
 - **Разработка:** разрешён `http://localhost:8087` (порт из `SERVER_PORT`)
 - **Продакшен:** если фронтенд и бэкенд на одном домене — CORS не требуется.  
-  При разделении — добавить `FRONTEND_URL` в `.env`.
 
 ---
 
@@ -449,23 +492,31 @@ adb reverse tcp:8087 tcp:8087
 
 GET /health
 Ответ:
+```
 {"status":"ok"}
+```
 📝 Примеры запросов
 1. Создание подписки
 POST /api/subscriptions
+```
 {
     "template_id": 1,
     "start_date": "09-2026",
     "end_date": "12-2026"
 }
+```
 Ответ:
+```
  {"id": 1}
+```
 Примечание: user_id, service_name и price берутся из шаблона и контекста авторизации.
 
 2. Получение суммарной стоимости 
 GET /api/subscriptions/total-cost?start_date=01-2025&end_date=12-2025
 Ответ:
+```
 {"total": 1500}
+```
 
 ## Нагрузочное тестирование
 
@@ -523,7 +574,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
 
 ---
 
-### 1. `GET /api/subscriptions` — список подписок
+#### 1. `GET /api/subscriptions` — список подписок
 
 #### До оптимизаций (без пула, без индексов)
 
@@ -543,7 +594,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
 
 ---
 
-### 2. `GET /api/subscriptions/total-cost` — суммарная стоимость
+#### 2. `GET /api/subscriptions/total-cost` — суммарная стоимость
 
 **Перед тестом:** в БД создано **50 000 подписок**. У тестируемого пользователя 5 подписок.
 **Условия:** пул соединений уже настроен, индексы добавлены. Тестировался **тяжёлый расчёт** с формулой `EXTRACT(MONTH FROM AGE(...))`.
@@ -569,7 +620,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
 
 ---
 
-### Сравнение: кеш vs без кеша
+#### Сравнение: кеш vs без кеша
 
 | Нагрузка (RPS) | С кешем  | Без кеша | Ускорение |
 |----------------|----------|----------|-----------|
@@ -615,7 +666,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
   - С кешем: **до 300 RPS**.
   - Без кеша: **до 100 RPS**.
 
-### Механизм кеширования
+#### Механизм кеширования
 
 Для обеспечения **100% консистентности** данных использовался **подход с версионированием**:
 
@@ -660,9 +711,8 @@ p95 задержка по эндпоинтам — 95-й процентиль в
 ## Документация Swagger
 
 После запуска сервера документация доступна по адресу:
-
-
 http://localhost:8087/swagger/index.html
+
 ## Тестирование
 
 Проект покрыт двумя типами тестов:
@@ -671,13 +721,13 @@ http://localhost:8087/swagger/index.html
 - **Интеграционные тесты** (с реальной БД) — запускаются через Docker
 
 
-# Юнит-тесты (без БД)
+#### Юнит-тесты (без БД)
 make test-u
 
-# Интеграционные тесты (с БД)
+#### Интеграционные тесты (с БД)
 make test-int
 
-# Все тесты
+#### Все тесты
 make test-all
 
 Проект покрыт юнит- и интеграционными тестами.
@@ -693,6 +743,7 @@ make test-all
 | `handlers`       | 62.4%    |
 | `database`       | 47.6%    |
 | `cmd/api`        | 21.4%    |
+
 ## Миграции
 
 Миграции применяются автоматически при запуске сервера.
@@ -711,136 +762,142 @@ make test-all
 ### Откат миграций
 
 
-# Через Makefile
+#### Через Makefile
 ```bash
 make migrate-down
 ```
-# Или напрямую
+#### Или напрямую
 ```bash
 go run cmd/api/main.go -down
 ```
 ## Структура проекта
 
+
+## 📁 Структура проекта
+
+```
 Rest-user-agregator/
 ├── .github/
-│ └── workflows/
-│ └── workflows.yml # GitHub Actions CI/CD
+│   └── workflows/
+│       └── workflows.yml
 ├── cmd/
-│ └── api/
-│ ├── main.go # Точка входа
-│ ├── init.go # Инициализация
-│ ├── servers.go # Запуск серверов
-│ ├── helpers.go # Вспомогательные функции
-│ ├── main_integration_test.go # Интеграционные тесты
-│ └── main_unit_test.go # Юнит-тесты
+│   └── api/
+│       ├── main.go
+│       ├── init.go
+│       ├── servers.go
+│       ├── helpers.go
+│       ├── main_integration_test.go
+│       └── main_unit_test.go
 ├── internal/
-│ ├── authentication/ # JWT, middleware, тесты
-│ │ ├── jwt.go
-│ │ ├── jwt_test.go
-│ │ ├── middleware.go
-│ │ └── middleware_test.go
-│ ├── cache/ # Redis-кеш
-│ │ ├── redis.go
-│ │ ├── cache_control.go
-│ │ └── interface.go
-│ ├── database/ # Инициализация БД + CRUDL + PostgresRepo
-│ │ ├── database.go
-│ │ ├── database_CRUDL_func.go
-│ │ ├── database_test.go
-│ │ ├── migrations.go
-│ │ ├── template_repo.go
-│ │ ├── user_repo.go
-│ │ └── cache_control.go
-│ ├── handlers/ # HTTP хэндлеры + хелперы + тесты
-│ │ ├── rest/
-│ │ │ ├── auth.go
-│ │ │ ├── handlers_api.go
-│ │ │ ├── handlers_integration_test.go
-│ │ │ ├── handlers_unit_test.go
-│ │ │ ├── helpers.go
-│ │ │ └── template_handlers.go
-│ │ └── grpc/
-│ │ ├── grpc_api.go
-│ │ └── grpc_api_test.go
-│ ├── metrics/ # Prometheus метрики
-│ │ └── metrics.go
-│ ├── middleware/ # CORS и метрики middleware
-│ │ ├── cors.go
-│ │ ├── metrics.go
-│ │ └── middleware_test.go
-│ ├── models/ # Модели данных
-│ │ ├── subscriptions.go
-│ │ ├── template.go
-│ │ └── user.go
-│ ├── repository/ # Интерфейсы репозиториев + моки
-│ │ ├── interface.go
-│ │ └── mock.go
-│ ├── service/ # Бизнес-логика
-│ │ ├── auth_service.go
-│ │ ├── auth_service_test.go
-│ │ ├── subscription_service.go
-│ │ ├── subscription_service_test.go
-│ │ └── template_service.go
-│ └── testutils/ # Утилиты для тестов
-│ └── checks.go
-├── migrations/ # SQL миграции
-│ ├── 000001_create_users_table.up.sql
-│ ├── 000001_create_users_table.down.sql
-│ ├── 000002_create_subscriptions_table.up.sql
-│ ├── 000002_create_subscriptions_table.down.sql
-│ ├── 000003_create_cache_control_user_table.up.sql
-│ ├── 000003_create_cache_control_user_table.down.sql
-│ ├── 000004_create_subscription_templates_table.up.sql
-│ └── 000004_create_subscription_templates_table.down.sql
-├── proto/ # gRPC протофайлы и сгенерированный код
-│ ├── subscription.proto
-│ ├── subscription.pb.go
-│ └── subscription_grpc.pb.go
-├── web/ # Фронтенд (HTML + CSS + JS)
-│ ├── css/
-│ │ └── style.css
-│ ├── js/
-│ │ ├── api.js
-│ │ ├── app.js
-│ │ ├── auth.js
-│ │ ├── components.js
-│ │ ├── templates.js
-│ │ └── utils.js
-│ ├── index.html
-│ └── templates.html
-├── docs/ # Swagger документация
-│ ├── docs.go
-│ ├── swagger.json
-│ └── swagger.yaml
-├── screenshots/ # Скриншоты Grafana для README
-│ ├── grafana_errors.png
-│ ├── grafana_p95.png
-│ └── grafana_rps.png
-├── technical_requirements/ # Техническое задание
-│ └── technical_requirements.txt
+│   ├── authentication/
+│   │   ├── jwt.go
+│   │   ├── jwt_test.go
+│   │   ├── middleware.go
+│   │   └── middleware_test.go
+│   ├── cache/
+│   │   ├── redis.go
+│   │   ├── cache_control.go
+│   │   └── interface.go
+│   ├── database/
+│   │   ├── database.go
+│   │   ├── database_CRUDL_func.go
+│   │   ├── database_test.go
+│   │   ├── migrations.go
+│   │   ├── template_repo.go
+│   │   ├── user_repo.go
+│   │   └── cache_control.go
+│   ├── handlers/
+│   │   ├── rest/
+│   │   │   ├── auth.go
+│   │   │   ├── handlers_api.go
+│   │   │   ├── handlers_integration_test.go
+│   │   │   ├── handlers_unit_test.go
+│   │   │   ├── helpers.go
+│   │   │   └── template_handlers.go
+│   │   └── grpc/
+│   │       ├── grpc_api.go
+│   │       ├── grpc_api_test.go
+│   │       └── helpers.go
+│   ├── metrics/
+│   │   └── metrics.go
+│   ├── middleware/
+│   │   ├── cors.go
+│   │   ├── metrics.go
+│   │   └── middleware_test.go
+│   ├── models/
+│   │   ├── subscriptions.go
+│   │   ├── template.go
+│   │   └── user.go
+│   ├── repository/
+│   │   ├── interface.go
+│   │   └── mock.go
+│   ├── service/
+│   │   ├── auth_service.go
+│   │   ├── auth_service_test.go
+│   │   ├── subscription_service.go
+│   │   ├── subscription_service_test.go
+│   │   └── template_service.go
+│   └── testutils/
+│       └── checks.go
+├── migrations/
+│   ├── 000001_create_users_table.up.sql
+│   ├── 000001_create_users_table.down.sql
+│   ├── 000002_create_subscriptions_table.up.sql
+│   ├── 000002_create_subscriptions_table.down.sql
+│   ├── 000003_create_cache_control_user_table.up.sql
+│   ├── 000003_create_cache_control_user_table.down.sql
+│   ├── 000004_create_subscription_templates_table.up.sql
+│   └── 000004_create_subscription_templates_table.down.sql
+├── proto/
+│   ├── subscription.proto
+│   ├── subscription.pb.go
+│   └── subscription_grpc.pb.go
+├── web/
+│   ├── css/
+│   │   └── style.css
+│   ├── js/
+│   │   ├── api.js
+│   │   ├── app.js
+│   │   ├── auth.js
+│   │   ├── components.js
+│   │   ├── templates.js
+│   │   └── utils.js
+│   ├── index.html
+│   └── templates.html
+├── docs/
+│   ├── docs.go
+│   ├── swagger.json
+│   └── swagger.yaml
+├── screenshots/
+│   ├── grafana_errors.png
+│   ├── grafana_p95.png
+│   └── grafana_rps.png
+├── technical_requirements/
+│   └── technical_requirements.txt
 ├── pkg/
-│ └── logger/ # Логирование с уровнями
-│ ├── logger.go
-│ └── logger_test.go
-├── compose.yaml # Docker Compose
-├── Makefile # Управление проектом
-├── Dockerfile # Docker образ
-├── prometheus.yml # Конфиг Prometheus
-├── buf.gen.yaml # Генерация gRPC
-├── buf.yaml # Конфиг buf
-├── .golangci.yml # Конфиг линтера
-├── .env # Конфигурация
-├── .gitignore # Игнорируемые файлы
-├── .dockerignore # Игнорируемые файлы для Docker
-├── go.mod # Зависимости
-├── go.sum # Контрольные суммы зависимостей
-└── README.md # Документация проекта
+│   └── logger/
+│       ├── logger.go
+│       └── logger_test.go
+├── compose.yaml
+├── Makefile
+├── Dockerfile
+├── prometheus.yml
+├── buf.gen.yaml
+├── buf.yaml
+├── .golangci.yml
+├── .env
+├── .gitignore
+├── .dockerignore
+├── go.mod
+├── go.sum
+└── README.md
+```
 
 ## 🔧 Переменные окружения
 
 Все переменные окружения задаются в файле `.env` при локальном запуске.
 
-**В этом проекте используются только демонстрационные (фейковые) пароли**, поэтому файл `.env` не скрывается и не требует шаблона.
+**В этом проекте используются демонстрационные  пароли**
 
 При необходимости вы можете изменить значения в `.env` под свои нужды.
 
@@ -865,7 +922,7 @@ Rest-user-agregator/
 ## Архитектура
 
 Проект построен на принципах **чистой архитектуры** и разделён на 5 слоёв:
-
+```
 | Слой                               | Папка                         |Ответственность                                              |
 |------------------------------------|---------------------------------------------------------------------------------------------|
 | **1. Презентационный слой (HTTP)** | `internal/handlers/rest/`     | REST: парсинг JSON, валидация, вызов сервиса, HTTP-ответ    |
@@ -874,8 +931,8 @@ Rest-user-agregator/
 | **2. Бизнес-слой (Service)**       | `internal/service/`           | Содержит логику: парсинг дат, валидацию, расчёты            |
 | **3. Интерфейс репозитория**       | `internal/repository/`        | Определяет контракт  с БД (позволяет подменять реализацию)  |
 | **4. Слой данных (Repository)**    | `internal/database/`          | Реализует интерфейс, выполняет SQL-запросы                  |
-| **5. База данных**                 | PostgreSQL                    | Хранит  данные                                              |
-
+| **5. База данных**                 |  PostgreSQL                   | Хранит  данные                                              |
+```
 **Цепочка вызовов (на примере REST):**
 
 ```text
@@ -936,10 +993,10 @@ PostgreSQL (хранилище)
 
 
 
-Секреты для GitHub Actions
+#### Секреты для GitHub Actions
 Для публикации в Docker Hub в настройках репозитория должны быть установлены следующие секреты:
 
 Секрет	Описание
 DOCKER_USERNAME	Имя пользователя Docker Hub
 DOCKER_ACCESS_TOKEN	Токен доступа к Docker Hub
-Настройка: Settings → Secrets and variables → Actions
+
