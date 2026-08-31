@@ -172,7 +172,9 @@ make run
 
 # 3. Проверить работу
 curl http://localhost:8087/health
-# {"status":"ok"}
+```
+ {"status":"ok"}
+```
 
 # 4. Остановить сервер
 make stop
@@ -183,8 +185,12 @@ make stop
 
 Установите PostgreSQL и создайте базу данных `subscriptions`.
 
-Создайте файл `.env` в корне проекта 
-```bash
+Создайте файл `.env` в корне проекта (скопируйте из `.env.example`):
+(Все показанные пароли демонстрационные, но соответствуют настройкам проекта)
+⚠️ **Внимание:** Все пароли в этом файле — **демонстрационные**.  
+Для продакшена используйте реальные секреты и **не коммитьте `.env`** в репозиторий.
+
+```
 DB_PATH=postgres://postgres:1771@db:5432/subscriptions?sslmode=disable
 SERVER_PORT=8087
 POSTGRES_PORT=5432
@@ -270,23 +276,29 @@ go run cmd/api/main.go cmd/api/init.go cmd/api/servers.go cmd/api/helpers.go
 | POST  | `/api/login`    | Вход, получение JWT-токена      |
 
 ### Регистрация пользователя
-```bash
+```
 curl -X POST http://localhost:8087/api/register \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"123456","role":"user"}'
  ```
 ###   Регистрация админа (только через БД)
+```
 docker exec -it subscription-db psql -U postgres -d subscriptions -c "INSERT INTO users (id, email, password_hash, role) VALUES (gen_random_uuid(), 'admin@example.com', '$2a$10$8dXxWmxnKk59pdXdy44l/eb4g1PnaFenHN3B.4lLR4bRy4ZL4xjK.', 'admin') ON CONFLICT (email) DO NOTHING;"
+```
 Вход (логин)
+```
 curl -X POST http://localhost:8087/api/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"123456"}'
+ ``` 
   Ответ:
+```  
 {
     "token": "eyJhbGciOiJIUzI1NiIs...",
     "email": "user@example.com",
     "role": "user"
 }  
+```
 ### 📋 Управление подписками
 
 Заголовок для всех запросов (кроме регистрации и логина):
@@ -300,27 +312,39 @@ PUT	/api/subscriptions/{id}	Обновить подписку
 DELETE	/api/subscriptions/{id}	Удалить подписку
 GET	/api/subscriptions/total-cost	Суммарная стоимость за период
 Получить список всех подписок
+```
 curl -X GET http://localhost:8087/api/subscriptions \
   -H "Authorization: Bearer <jwt_token>"
+```
 Получить подписку по ID
+```
 curl -X GET http://localhost:8087/api/subscriptions/1 \
   -H "Authorization: Bearer <jwt_token>"
+```
 Создать подписку
+```
 curl -X POST http://localhost:8087/api/subscriptions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"template_id":1,"start_date":"09-2026","end_date":"12-2026"}'
+```
 Обновить подписку
+```
 curl -X PUT http://localhost:8087/api/subscriptions/1 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"start_date":"10-2026","end_date":"12-2026"}'
+```
 Удалить подписку
+```
 curl -X DELETE http://localhost:8087/api/subscriptions/1 \
   -H "Authorization: Bearer <jwt_token>"
+```
 Получить суммарную стоимость за период
+```
 curl -X GET "http://localhost:8087/api/subscriptions/total-cost?start_date=08-2026&end_date=09-2026" \
   -H "Authorization: Bearer <jwt_token>"
+```
 ### 📋 Управление шаблонами (только для админа)
 Заголовок:
 Authorization: Bearer <jwt_token>
@@ -331,28 +355,38 @@ POST	/api/admin/templates	Создать шаблон
 PUT	/api/admin/templates/{id}	Обновить шаблон
 DELETE	/api/admin/templates/{id}	Удалить шаблон
 Получить список всех шаблонов
+```
 curl -X GET http://localhost:8087/api/templates \
   -H "Authorization: Bearer <jwt_token>"
+```
 Создать шаблон
+```
 curl -X POST http://localhost:8087/api/admin/templates \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"service_name":"Яндекс Плюс","price":400}'
+```
 Обновить шаблон
+```
 curl -X PUT http://localhost:8087/api/admin/templates/1 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <jwt_token>" \
   -d '{"service_name":"Яндекс Плюс Премиум","price":500}'
+```
 Удалить шаблон
+```
 curl -X DELETE http://localhost:8087/api/admin/templates/1 \
   -H "Authorization: Bearer <jwt_token>"
+```
 ℹ️ Дополнительные эндпоинты
-Метод	Эндпоинт	Описание
-GET	/health	Проверка работоспособности сервера
-GET	/api/config	Конфигурация для фронтенда
+Метод             	Эндпоинт	        Описание
+GET	               /health	          Проверка работоспособности сервера
+GET	               /api/config	      Конфигурация для фронтенда
 Пример:
+```
 curl http://localhost:8087/health
 {"status":"ok"}
+```
  
 ## 🖥️ Фронтенд
 
@@ -453,19 +487,25 @@ GET /health
 📝 Примеры запросов
 1. Создание подписки
 POST /api/subscriptions
+```
 {
     "template_id": 1,
     "start_date": "09-2026",
     "end_date": "12-2026"
 }
+```
 Ответ:
+```
  {"id": 1}
+```
 Примечание: user_id, service_name и price берутся из шаблона и контекста авторизации.
 
 2. Получение суммарной стоимости 
 GET /api/subscriptions/total-cost?start_date=01-2025&end_date=12-2025
 Ответ:
+```
 {"total": 1500}
+```
 
 ## Нагрузочное тестирование
 
@@ -721,730 +761,6 @@ go run cmd/api/main.go -down
 ```
 ## Структура проекта
 
-Rest-user-agregator/
-├── .github/
-│ └── workflows/
-│ └── workflows.yml # GitHub Actions CI/CD
-├── cmd/
-│ └── api/
-│ ├── main.go # Точка входа
-│ ├── init.go # Инициализация
-│ ├── servers.go # Запуск серверов
-│ ├── helpers.go # Вспомогательные функции
-│ ├── main_integration_test.go # Интеграционные тесты
-│ └── main_unit_test.go # Юнит-тесты
-├── internal/
-│ ├── authentication/ # JWT, middleware, тесты
-│ │ ├── jwt.go
-│ │ ├── jwt_test.go
-│ │ ├── middleware.go
-│ │ └── middleware_test.go
-│ ├── cache/ # Redis-кеш
-│ │ ├── redis.go
-│ │ ├── cache_control.go
-│ │ └── interface.go
-│ ├── database/ # Инициализация БД + CRUDL + PostgresRepo
-│ │ ├── database.go
-│ │ ├── database_CRUDL_func.go
-│ │ ├── database_test.go
-│ │ ├── migrations.go
-│ │ ├── template_repo.go
-│ │ ├── user_repo.go
-│ │ └── cache_control.go
-│ ├── handlers/ # HTTP хэндлеры + хелперы + тесты
-│ │ ├── rest/
-│ │ │ ├── auth.go
-│ │ │ ├── handlers_api.go
-│ │ │ ├── handlers_integration_test.go
-│ │ │ ├── handlers_unit_test.go
-│ │ │ ├── helpers.go
-│ │ │ └── template_handlers.go
-│ │ └── grpc/
-│ │ ├── grpc_api.go
-│ │ └── grpc_api_test.go
-│ ├── metrics/ # Prometheus метрики
-│ │ └── metrics.go
-│ ├── middleware/ # CORS и метрики middleware
-│ │ ├── cors.go
-│ │ ├── metrics.go
-│ │ └── middleware_test.go
-│ ├── models/ # Модели данных
-│ │ ├── subscriptions.go
-│ │ ├── template.go
-│ │ └── user.go
-│ ├── repository/ # Интерфейсы репозиториев + моки
-│ │ ├── interface.go
-│ │ └── mock.go
-│ ├── service/ # Бизнес-логика
-│ │ ├── auth_service.go
-│ │ ├── auth_service_test.go
-│ │ ├── subscription_service.go
-│ │ ├── subscription_service_test.go
-│ │ └── template_service.go
-│ └── testutils/ # Утилиты для тестов
-│ └── checks.go
-├── migrations/ # SQL миграции
-│ ├── 000001_create_users_table.up.sql
-│ ├── 000001_create_users_table.down.sql
-│ ├── 000002_create_subscriptions_table.up.sql
-│ ├── 000002_create_subscriptions_table.down.sql
-│ ├── 000003_create_cache_control_user_table.up.sql
-│ ├── 000003_create_cache_control_user_table.down.sql
-│ ├── 000004_create_subscription_templates_table.up.sql
-│ └── 000004_create_subscription_templates_table.down.sql
-├── proto/ # gRPC протофайлы и сгенерированный код
-│ ├── subscription.proto
-│ ├── subscription.pb.go
-│ └── subscription_grpc.pb.go
-├── web/ # Фронтенд (HTML + CSS + JS)
-│ ├── css/
-│ │ └── style.css
-│ ├── js/
-│ │ ├── api.js
-│ │ ├── app.js
-│ │ ├── auth.js
-│ │ ├── components.js
-│ │ ├── templates.js
-│ │ └── utils.js
-│ ├── index.html
-│ └── templates.html
-├── docs/ # Swagger документация
-│ ├── docs.go
-│ ├── swagger.json
-│ └── swagger.yaml
-├── screenshots/ # Скриншоты Grafana для README
-│ ├── grafana_errors.png
-│ ├── grafana_p95.png
-│ └── grafana_rps.png
-├── technical_requirements/ # Техническое задание
-│ └── technical_requirements.txt
-├── pkg/
-│ └── logger/ # Логирование с уровнями
-│ ├── logger.go
-│ └── logger_test.go
-├── compose.yaml # Docker Compose
-├── Makefile # Управление проектом
-├── Dockerfile # Docker образ
-├── prometheus.yml # Конфиг Prometheus
-├── buf.gen.yaml # Генерация gRPC
-├── buf.yaml # Конфиг buf
-├── .golangci.yml # Конфиг линтера
-├── .env # Конфигурация
-├── .gitignore # Игнорируемые файлы
-├── .dockerignore # Игнорируемые файлы для Docker
-├── go.mod # Зависимости
-├── go.sum # Контрольные суммы зависимостей
-└── README.md # Документация проекта
-
-## 🔧 Переменные окружения
-
-Все переменные окружения задаются в файле `.env` при локальном запуске.
-
-**В этом проекте используются только демонстрационные (фейковые) пароли**, поэтому файл `.env` не скрывается и не требует шаблона.
-
-При необходимости вы можете изменить значения в `.env` под свои нужды.
-
-| Переменная          | Описание                 | Значение по умолчанию                                            |
-|---------------------|--------------------------|------------------------------------------------------------------|
-| `DB_PATH`           | Подключение к PostgreSQL | `postgres://postgres:1771@db:5432/subscriptions?sslmode=disable` |
-| `SERVER_PORT`       | Порт REST API            | `8087`                                                           |
-| `GRPC_PORT`         | Порт gRPC                | `50051`                                                          |
-| `POSTGRES_PORT`     | Порт PostgreSQL          | `5432`                                                           |
-| `POSTGRES_USER`     | Пользователь PostgreSQL  | `postgres`                                                       |
-| `POSTGRES_PASSWORD` | Пароль PostgreSQL        | `1771`                                                           |
-| `POSTGRES_DB`       | Имя базы данных          | `subscriptions`                                                  |
-| `LOG_LEVEL`         | Уровень логирования      | `debug`                                                          |
-| `LOG_PATH`          | Путь к файлу логов       | `./logs/app.log`                                                 |
-| `LOGGER`            | Тип логгера              | `debug`                                                          |
-| `JWT_SECRET`        | Секрет для подписи JWT   | `112233`                                                         |
-| `REDIS_ADDR`        | Адрес Redis              | (пусто — используется `localhost:6379`)                          |
-| `REDIS_PORT`        | Порт Redis               | `6379`                                                           |
-| `PPROF_ENABLED`     | Включить pprof           | `false`                                                          |
-
-
-## Архитектура
-
-Проект построен на принципах **чистой архитектуры** и разделён на 5 слоёв:
-
-| Слой                               | Папка                         |Ответственность                                              |
-|------------------------------------|---------------------------------------------------------------------------------------------|
-| **1. Презентационный слой (HTTP)** | `internal/handlers/rest/`     | REST: парсинг JSON, валидация, вызов сервиса, HTTP-ответ    |
-| **1. Презентационный слой (gRPC)** | `internal/handlers/grpc/`     | gRPC: обработка gRPC-запросов, вызов сервиса, gRPC-ответ    |
-|----------------------------------------------------------------------------------------------------------------------------------|
-| **2. Бизнес-слой (Service)**       | `internal/service/`           | Содержит логику: парсинг дат, валидацию, расчёты            |
-| **3. Интерфейс репозитория**       | `internal/repository/`        | Определяет контракт  с БД (позволяет подменять реализацию)  |
-| **4. Слой данных (Repository)**    | `internal/database/`          | Реализует интерфейс, выполняет SQL-запросы                  |
-| **5. База данных**                 | PostgreSQL                    | Хранит  данные                                              |
-
-**Цепочка вызовов (на примере REST):**
-
-```text
-HTTP-запрос
-    ↓
-handlers/rest (парсинг JSON, валидация)
-    ↓
-service (бизнес-логика)
-    ↓
-repository (интерфейс)
-    ↓
-database (SQL-запросы)
-    ↓
-PostgreSQL (хранилище)
-```
-
-Принципы, соблюдённые в проекте:
-
-- Инкапсуляция — БД приватная (db), доступ только через методы
-- Интерфейсы — SubscriptionRepository отделяет бизнес-логику от работы с БД
-- Внедрение зависимостей — хендлеры и сервис получают зависимости через конструкторы
-- Слабая связность — легко подменить реализацию БД или мокировать в тестах
-
-## Возможные ошибки и их решение
-
-| Ошибка                                                  | Решение                                                                  |
-|---------------------------------------------------------|--------------------------------------------------------------------------|
-| `user_id` must always be a valid UUID                   | Проверьте, что переданный user_id соответствует формату UUID             |
-| `start_date` must be in format MM-YYYY                  | Используйте формат: месяц (01-12) и год (1900-2100) через дефис          |
-| `price` must not be negative                            | Цена подписки должна быть ≥ 0                                            |
-| `cannot change start_date that is today or in the past` | Выберите дату позже сегодняшнего дня                                     |
-| `subscription with this template already exists`        | Удалите существующую подписку с этим шаблоном или выберите другой        |
-| `template_id is required`                               | Передайте `template_id` в запросе                                        |
-| `invalid token`                                         | Проверьте, что токен передан в заголовке `Authorization: Bearer <token>` |
-| `Database error`                                        | Проверьте подключение к PostgreSQL и выполнение миграций                 |
-
-## CI/CD (GitHub Actions)
-
-Проект использует GitHub Actions для автоматического тестирования, проверки качества кода и публикации Docker-образов.
-
-### Workflow
-
-Пайплайн состоит из двух последовательных джобов:
-
-| Джоб          | Описание                                 | Условие запуска                               |
-|---------------|------------------------------------------|-----------------------------------------------|
-| Test          | Сборка и запуск тестов с PostgreSQL      | После Push / Pull Request                     |
-| Publish       | Публикация Docker-образа в Docker Hub    |Только при создании тега `v*` и                |
-                |                                          | успешном прохождении всех предыдущих джобов   |
-### Триггеры запуска
-
-| Триггер                        | Что запускается                                 |
-|--------------------------------|-------------------------------------------------|
-| **Push** в любую ветку         |  Тесты                                          |
-| **Pull Request** в любую ветку |  Тесты                                          |
-| **Создание тега `v*`**         |  Тесты + Публикация Docker-образа               |
-
-
-
-
-Секреты для GitHub Actions
-Для публикации в Docker Hub в настройках репозитория должны быть установлены следующие секреты:
-
-Секрет	Описание
-DOCKER_USERNAME	Имя пользователя Docker Hub
-DOCKER_ACCESS_TOKEN	Токен доступа к Docker Hub
-=======
-# Rest User Agregator
-
-[![CI/CD](https://github.com/Evgeny-08-01/Rest-user-agregator/actions/workflows/workflows.yml/badge.svg)](https://github.com/Evgeny-08-01/Rest-user-agregator/actions)
-
-**📄 Техническое задание:** [Посмотреть ТЗ](./technical%20requirements/technical%20requirements.txt)
-
-REST API сервис для агрегации данных онлайн подписок пользователей.
-
-## Стек технологий
-
-| №  | Компонент               | Технология                                                     |
-|----|-------------------------|----------------------------------------------------------------|
-| 1  | Язык                    | Go 1.23                                                        |
-| 2  | База данных             | PostgreSQL 15                                                  |
-| 3  | API                     | REST                                                           |
-| 4  | Авторизация             | JWT                                                            |
-| 5  | Middleware              | CORS, логирование, авторизация                                 |
-| 6  | Контейнеризация         | Docker + Docker Compose                                        |
-| 7  | CI/CD                   | GitHub Actions                                                 |
-| 8  | Мониторинг              | Prometheus + Grafana                                           |
-| 9  | Нагрузочное тестирование| vegeta                                                         |
-| 10 | Тестирование            | Юнит-тесты + интеграционные                                    |
-| 11 | Документация API        | Swagger                                                        |
-| 12 | Архитектура             | Слоистая (Handlers → Service → Repository → БД)                |
-| 13 | Внедрение зависимостей  | Через конструкторы                                             |
-| 14 | Логирование             | Собственный пакет с уровнями (DEBUG, INFO, WARN, ERROR, FATAL) |
-| 15 | Graceful shutdown       | Обработка SIGINT и SIGTERM                                     |
-| 16 | Миграции                | SQL-скрипты                                                    |
-| 17 | Кеширование             | Redis (планируется)                                            |
-| 18 | Фронтенд (демо)         | HTML + CSS + JS (чистый)                                       |
-| 19 |Кеширование              | Redis (планируется)                                            |
----
-
-## Функциональность
-
-- CRUDL операции с подписками
-- Подсчёт суммарной стоимости подписок за период с фильтрацией:
-  - по ID пользователя 
-  - по названию сервиса
-- Валидация входных данных:
-  - UUID пользователя (наличие обязательно, диагностируется ошибка в базе данных)
-  - Дата в формате MM-YYYY
-  - Цена подписки ≥ 0
-- Регистрация и авторизация пользователей (JWT)
-- Роли: пользователь и администратор
-- Защита API-эндпоинтов через middleware
-- Фронтенд на чистом JS (HTML + CSS)
-- Динамическая подгрузка конфигурации через `/api/config`
-
-## Логирование
-
-Поддерживаются уровни логирования:
-- `DEBUG` — для отладки (не используется в продакшене)
-- `INFO` — нормальные события (запуск, остановка, HTTP запросы)
-- `WARN` — проблемы, не требующие остановки
-- `ERROR` — сбои, требующие внимания
-- `FATAL` — критические ошибки, сервер падает
-
-Уровень задаётся переменной `LOG_LEVEL` в `.env`
-
-## Graceful Shutdown
-
-При получении сигналов SIGINT (Ctrl+C) или SIGTERM сервер:
-1. Перестаёт принимать новые соединения
-2. Завершает обработку текущих запросов
-3. Закрывает соединение с БД
-4. Завершает работу с кодом 
-   - Код 0 — если все запросы успели завершиться.
-   - Код 1 — если произошла ошибка при старте или остановке.
-
-
-## Запуск
-
-### Через Docker Compose (рекомендуется)
-
-```bash
-docker-compose up --build
-```
-### Управление проектом через Makefile
-
-| Команда                    | Описание                                                    |
-|----------------------------|-------------------------------------------------------------|
-| `make help`                | Показать все команды                                        |
-| `make test-u`              | Юнит-тесты (с моками, без БД) — быстро                      |
-| `make test-int`            | Интеграционные тесты (с БД, автоматически запускает Docker) |
-| `make test-all`            | Сначала юнит, потом интеграционные                          |
-| `make build`               | Сборка бинарника                                            |
-| `make docker-up`           | Запуск всех контейнеров                                     |
-| `make docker-down`         | Остановка контейнеров                                       |
-| `make docker-up-db`        | Запуск только PostgreSQL                                    |
-| `make docker-logs`         | Просмотр логов всех контейнеров                             |
-| `make docker-logs-server`  | Просмотр логов только сервера                               |
-| `make clean`               | Очистка артефактов сборки (bin/, coverage/, cache)          |
-| `make migrate-up`          | Применить все миграции                                      |
-| `make migrate-down`        | Откатить все миграции                                       |
-| `make migrate-down-users`  | Откатить только таблицу `users`                             |
-| `make migrate-down-subs`   | Откатить только таблицу `subscriptions`                     |
-
-Сервер будет доступен по адресу: http://localhost:8087
-
-### Локальный запуск (без Docker)
-
-Установите PostgreSQL и создайте базу данных `subscriptions`.
-
-Создайте файл `.env` в корне проекта (скопируйте из `.env.example`):
-(Все показанные пароли демонстрационные, но соответствуют настройкам проекта)
-⚠️ **Внимание:** Все пароли в этом файле — **демонстрационные**.  
-Для продакшена используйте реальные секреты и **не коммитьте `.env`** в репозиторий.
-
-```
-DB_PATH=postgres://postgres:1771@db:5432/subscriptions?sslmode=disable
-SERVER_PORT=8087
-POSTGRES_PORT=5432
-POSTGRES_PASSWORD=1771
-POSTGRES_DB=subscriptions
-LOG_LEVEL=debug
-LOG_PATH=./logs/app.log
-POSTGRES_USER=postgres
-JWT_SECRET=112233
-REDIS_PORT=6379
-REDIS_ADDR=
-LOGGER=debug
-PPROF_ENABLED=false
-GRPC_PORT=50051
-```
-Запустите сервер:
-make run
-Или вручную:
-```bash
-go run cmd/api/main.go
-```
-
-## API Endpoints
-
-| Метод   | Эндпоинт                        | Защита | Описание                             |
-|---------|---------------------------------|--------|--------------------------------------|
-| POST    | `/api/register`                 | ❌ Нет | Регистрация пользователя             |
-| POST    | `/api/login`                    | ❌ Нет | Вход, получение JWT                  |
-| POST    | `/api/subscriptions`            | ✅ Да  | Создать подписку                     |
-| GET     | `/api/subscriptions`            | ✅ Да  | Список подписок                      |
-| GET     | `/api/subscriptions/{id}`       | ✅ Да  | Получить подписку по ID              |
-| PUT     | `/api/subscriptions/{id}`       | ✅ Да  | Обновить подписку                    |
-| DELETE  | `/api/subscriptions/{id}`       | ✅ Да  | Удалить подписку                     |
-| GET     | `/api/subscriptions/total-cost` | ✅ Да  | Суммарная стоимость                  |
-| GET     | `/health`                       | ❌ Нет | Проверка работоспособности           |
-| GET     | `/api/config`                   | ❌ Нет | Адрес бэкенда для фронтенда          |
-
-### 🔐 Авторизация
-
-Реализована JWT-авторизация с ролями:
-- `user` — обычный пользователь
-- `admin` — администратор (создаётся только через БД)
-
-### Заголовок для защищённых запросов:
-```
-Authorization: Bearer <jwt_token>
-```
-
-### Эндпоинты авторизации:
-
-| Метод | Эндпоинт        | Описание                        |
-|-------|-----------------|---------------------------------|
-| POST  | `/api/register` | Регистрация нового пользователя |
-| POST  | `/api/login`    | Вход, получение JWT-токена      |
-
-### Пример регистрации:
-```json
-{
-    "email": "user@example.com",
-    "password": "123456",
-    "role": "user"
-}
-```
-
-### Пример логина:
-```json
-{
-    "email": "user@example.com",
-    "password": "123456"
-}
-```
-
-### Ответ логина:
-```json
-{
-    "token": "eyJhbGciOiJIUzI1NiIs...",
-    "email": "user@example.com",
-    "role": "user"
-}
-```
-### 🖥️ Фронтенд
-
-- Интерфейс на чистом JS (HTML + CSS)
-- Раздаётся бэкендом через `/css/`, `/js/`, `/`
-- Эндпоинт `/api/config` для динамического получения адреса бэкенда
-- Включает: регистрацию, логин, CRUDL подписок, фильтры, пагинацию, total-cost
-
-### 🌐 CORS
-
-- **Разработка:** разрешён `http://localhost:8087` (порт из `SERVER_PORT`)
-- **Продакшен:** если фронтенд и бэкенд на одном домене — CORS не требуется.  
-  При разделении — добавить `FRONTEND_URL` в `.env`.
-
-#### Параметры фильтрации для `/api/subscriptions/total-cost`
-
-| Параметр        | Тип             | Описание                 |
-|-----------------|-----------------|--------------------------|
-| `user_id`       | UUID            | ID пользователя          |
-| `service_name`  | string          | Название сервиса         |
-| `start_date`    | string          | Дата начала (MM-YYYY)    |
-| `end_date`      | string          | Дата окончания (MM-YYYY) |
-
-#### Healthcheck
-Для проверки работоспособности сервиса доступен отдельный эндпоинт:
-
-
-GET /health
-
-Ответ:
-
-{"status":"ok"}
-
-### Примеры запросов
-
-#### Создание подписки
-
-
-POST /api/subscriptions
-{
-    "service_name": "Yandex Plus",
-    "price": 400,
-    "user_id": "60601fee-2bf1-4721-ae6f-7636e79a0cba",
-    "start_date": "07-2025"
-}
-
-
-Ответ:
-
-{
-    "id": 1
-}
-
-### Получение суммарной стоимости
-
-
-GET /api/subscriptions/total-cost?user_id=60601fee-2bf1-4721-ae6f-7636e79a0cba&start_date=01-2025&end_date=12-2025
-
-
-Ответ:
-```json
-{
-    "total": 1500
-}
-```
-
-## Нагрузочное тестирование
-
-### Инструменты
-- **vegeta** — генерация нагрузки
-- **Prometheus** — сбор метрик
-- **Grafana** — визуализация
-- **pprof** — профилирование CPU
-
-
-### Установка vegeta
-
-Для запуска нагрузочного тестирования потребуется утилита **vegeta**:
-
-**macOS / Linux:**
-```bash
-brew install vegeta
-```
-
-**Windows (Git Bash):**
-```bash
-curl -L -o vegeta.zip https://github.com/tsenart/vegeta/releases/download/v12.11.1/vegeta_12.11.1_windows_amd64.zip
-unzip vegeta.zip
-mv vegeta.exe ~/bin/
-```
-
-**Проверка установки:**
-```bash
-vegeta -version
-```
-
-### Запуск нагрузочного тестирования
-#### Тестируемые эндпоинты
-
-| Эндпоинт                            | Что проверяет                           |
-|-------------------------------------|-----------------------------------------|
-| `GET /api/subscriptions`            | Список подписок (пагинация, сортировка) |
-| `GET /api/subscriptions/total-cost` | Суммарная стоимость (тяжёлый расчёт)    |
-
-Пример команды для GET-запроса:
-
-```bash
-echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s -rate=50 -header "Authorization: Bearer $TOKEN" | vegeta report
-```
-
-### Сценарий тестирования
-- Длительность каждого теста: **30 секунд**
-- Тестирование проводилось на **локальной машине (Windows 10)** через Docker-контейнер с сервисом
-- Использовался **один и тот же JWT-токен** для всех запросов
-- Тесты запускались **последовательно**, без перезапуска сервера между ними
-- Тестировался эндпоинт: `GET /api/subscriptions/total-cost?user_id={uuid}&start_date=01-2025&end_date=12-2025`
-- Один пользователь с **5 подписками** (`a04fc7e5-8e8a-4477-967f-8d941864dc4d`)
-
-### Результаты
-
----
-
-### 1. `GET /api/subscriptions` — список подписок
-
-#### До оптимизаций (без пула, без индексов)
-
-| RPS | Успешность      | Задержка (p95) |
-|-----|-----------------|----------------|
-| 200 | 79.43%          | 30 сек         |
-| 300 | 10.67%          | 30 сек         |
-
-#### После оптимизаций (пул соединений + индексы)
-
-| RPS  | Успешность | Задержка (p95) | Статус            |
-|------|------------|----------------|-------------------|
-| 1000 | 100%       | 1.399 с        | Стабильно         |Средняя	Была 376 мс (при 1000 RPS)
-| 1200 | 99.49%     | 21 с           | Начинаются ошибки |
-
-**Предел устойчивости:** ~1100 RPS.
-
----
-
-### 2. `GET /api/subscriptions/total-cost` — суммарная стоимость
-
-**Перед тестом:** в БД создано **50 000 подписок**. У тестируемого пользователя 5 подписок.
-**Условия:** пул соединений уже настроен, индексы добавлены. Тестировался **тяжёлый расчёт** с формулой `EXTRACT(MONTH FROM AGE(...))`.
-
-#### С кешем (Redis)
-
-| RPS | Средняя задержка | p95   | Успешность | Статус          |
-|-----|------------------|-------|------------|-----------------|
-| 150 | 13.5 мс          | 60 мс | 100%       | Стабильно       |
-| 200 | 15.8 мс          | 77 мс | 100%       | Стабильно       |
-| 300 | 265 мс           | 1.0 с | 100%       | Задержка растёт |
-| 400 | 2.6 с            | 4.4 с | 99.97%     | Почти предел    |
-| 500 | 18.8 с           | 30 с  | 22.3%      | Падение         |
-
-#### Без кеша (Redis отключён)
-
-| RPS | Средняя задержка | p95    | Успешность | Статус            |
-|-----|------------------|--------|------------|-------------------|
-| 100 | 181 мс           | 243 мс | 100%       | Стабильно         |
-| 150 | 770 мс           | 1.4 с  | 100%       | Задержка растёт   |
-| 200 | 807 мс           | 1.8 с  | 100%       | Почти предел      |
-| 300 | 1.9 с            | 3.2 с  | 81.7%      | Начинаются ошибки |
-
----
-
-#### Сравнение: кеш vs без кеша
-
-| Нагрузка (RPS) | С кешем  | Без кеша | Ускорение |
-|----------------|----------|----------|-----------|
-| 150            | 13.5 мс  | 770 мс   | 57x       |
-| 200            | 15.8 мс  | 807 мс   | 51x       |
-| 300            | 265 мс   | 1.9 с    | 7x        |
-
-| Показатель           | С кешем | Без кеша | Улучшение |
-|----------------------|---------|----------|-----------|
-| Макс. стабильный RPS | 200–300 | 100      | 2–3x      |
-| Точка отказа         | 500 RPS | 300 RPS  | 1.6x      |
-
----
-
-#### Сводная таблица по всем оптимизациям
-
-| Что оптимизировали                | Было          | Стало           | Улучшение |
-|-----------------------------------|---------------|-----------------|-----------|
-| GET /subscriptions (предел RPS)   | 200 RPS (79%) | 1000 RPS (100%) | 5x        |
-| total-cost (задержка при 150 RPS) | 770 мс        | 13.5 мс         | 57x       |
-| total-cost (стабильный RPS)       | 100 RPS       | 300 RPS         | 3x        |
-
----
-#### Влияние логгера на производительность
-
-В ходе профилирования с помощью `pprof` было выявлено, что кастомный логгер на базе `log.Printf` на уровне `info` потреблял **~15–20% CPU**:
-
-**Оценка:** Кастомный  логгер надо перевести на внутреннее использование slog или переписать код с логером slog или zerolog  , это  может дать прирост RPS на 10-15% относительно оптимизированного кода с кэшем и увеличенного пула соединений, однако точная цифра требует дополнительного замера через `pprof` с новым логгером.
-
----
-### Выводы
-
-- **Кеш увеличивает пропускную способность в 2–3 раза:**
-  - Без кеша: стабильно до **100 RPS**.
-  - С кешем: стабильно до **200–300 RPS**.
-- **Задержки с кешем ниже на порядок:**
-  - С кешем: **13–16 мс** (при 150–200 RPS).
-  - Без кеша: **180–800 мс** (при 100–200 RPS).
-- **Точка отказа:**
-  - С кешем — **500 RPS** (22% успешности).
-  - Без кеша — **300 RPS** (81% успешности).
-- **Рекомендуемый лимит для стабильной работы:**
-  - С кешем: **до 300 RPS**.
-  - Без кеша: **до 100 RPS**.
-
-#### Механизм кеширования
-
-Для обеспечения **100% консистентности** данных использовался **подход с версионированием**:
-
-- Каждому пользователю в БД сопоставлена **версия кеша** (таблица `cache_control_user`).
-- При изменении данных (Create/Update/Delete) версия **инкрементится**.
-- Ключ в Redis строится с учётом версии:  
-  `total:v{version}:{userID}:{serviceName}:{startDate}:{endDate}`
-- При инкременте версии **старые ключи перестают читаться** — это обеспечивает мгновенную инвалидацию без удаления данных из Redis.
-- Дополнительный **TTL = 5 минут** служит страховкой на случай сбоя инкремента.
-
-Такой подход **снижает вероятность показа невалидных данных до <0.1%** (только при одновременном сбое БД и Redis). В отличие от простого TTL (где окно невалидности составляло до 5 минут), версионирование делает кеш **мгновенно консистентным** после любого изменения.
-#### Для агрегатора подписок такой подход с версированием, скорее всего, избыточен.
-
-## Мониторинг (Prometheus + Grafana)
-
-### Стек
-- **Prometheus** — сбор и хранение метрик
-- **Grafana** — визуализация и дашборды
-
-### Доступные дашборды
-
-Доступные дашборды
-
-В Grafana настроен дашборд HTTP Monitoring со следующими панелями:
-
-RPS (запросы в секунду) — количество запросов, обрабатываемых сервером.
-Запрос: rate(http_requests_total[1m])
-
-p95 задержка по эндпоинтам — 95-й процентиль времени ответа.
-Запрос: histogram_quantile(0.95, sum by(le, method, path) (rate(http_request_duration_seconds_bucket[$__rate_interval])))
-
-Ошибки (4xx, 5xx, Internal Server Error) — количество ошибочных запросов.
-Запрос: rate(http_requests_total{status!="OK"}[1m])
-### Скриншоты
-
-![RPS](screenshots/grafana_rps.png)
-![p95](screenshots/grafana_p95.png)
-![Errors](screenshots/grafana_errors.png)
-
-> 💡 *Скриншоты находятся в папке `screenshots/`*
-
-## Документация Swagger
-
-После запуска сервера документация доступна по адресу:
-
-http://localhost:8087/swagger/index.html
-
-## Тестирование
-
-Проект покрыт двумя типами тестов:
-
-- **Юнит-тесты** (с моками) — не требуют БД, быстрые
-- **Интеграционные тесты** (с реальной БД) — запускаются через Docker
-
-
-#### Юнит-тесты (без БД)
-make test-u
-
-#### Интеграционные тесты (с БД)
-make test-int
-
-#### Все тесты
-make test-all
-
-Проект покрыт юнит- и интеграционными тестами.
-
-**Общее покрытие: ~65%**
-
-| Пакет            | Покрытие |
-|------------------|----------|
-| `authentication` | 95.9%    |
-| `middleware`     | 95.5%    |
-| `logger`         | 82.1%    |
-| `service`        | 77.7%    |
-| `handlers`       | 62.4%    |
-| `database`       | 47.6%    |
-| `cmd/api`        | 21.4%    |
-
-### Миграции
-
-Миграции применяются автоматически при запуске сервера.
-
-| `migrations/000001_create_subscriptions_table.up.sql`        | Создание таблицы подписок                     |
-| `migrations/000001_create_subscriptions_table.down.sql`      | Удаление таблицы подписок                     |
-| `migrations/000002_create_users_table.up.sql`                | Создание таблицы пользователей                |
-| `migrations/000002_create_users_table.down.sql`              | Удаление таблицы пользователей                |
-| `migrations/000003_create_cache_control_user_table.up.sql`   | Создание таблицы версий кеша (cache_control)  |
-| `migrations/000003_create_cache_control_user_table.down.sql` | Удаление таблицы версий кеша (cache_control)  |
-
-### Откат миграций
-
-Для отката миграций используйте флаг `-down`:
-
-```
-go run cmd/api/main.go -down
-```
-## Структура проекта
-
 ```
 Rest-user-agregator/
 ├── .github/
@@ -1561,38 +877,53 @@ Rest-user-agregator/
 ├── go.sum
 └── README.md
 ```
-### Переменные окружения
 
-| Переменная         | Описание                      | Значение по умолчанию                                                |
-|--------------------|-------------------------------|----------------------------------------------------------------------|
-| `DB_PATH`          | Подключение к PostgreSQL      | `postgres://postgres:mysecret@db:5432/subscriptions?sslmode=disable` |
-| `SERVER_PORT`      | Порт сервера                  | `8087`                                                               |
-| `POSTGRES_PASSWORD`| Пароль PostgreSQL             | `mysecret`                                                           |
-| `POSTGRES_DB`      | Имя базы данных               | `subscriptions`                                                      |
-| `LOG_LEVEL`        | Уровень логирования           | `info`                                                               |
-| `LOG_PATH`         | Путь к файлу логов            | `/var/log/app/app.log`                                               |
-| `POSTGRES_USER`    | Пользователь PostgreSQL       | `postgres`                                                           |
-| `JWT_SECRET`       | Секрет для подписи JWT        | Обязательно задать в `.env`                                          |
-| `FRONTEND_URL`     | Разрешённый источник для CORS | `http://localhost:8087`                                              |
+## 🔧 Переменные окружения
+
+Все переменные окружения задаются в файле `.env` при локальном запуске.
+
+**В этом проекте используются только демонстрационные (фейковые) пароли**, поэтому файл `.env` не скрывается и не требует шаблона.
+
+При необходимости вы можете изменить значения в `.env` под свои нужды.
+
+| Переменная          | Описание                 | Значение по умолчанию                                            |
+|---------------------|--------------------------|------------------------------------------------------------------|
+| `DB_PATH`           | Подключение к PostgreSQL | `postgres://postgres:1771@db:5432/subscriptions?sslmode=disable` |
+| `SERVER_PORT`       | Порт REST API            | `8087`                                                           |
+| `GRPC_PORT`         | Порт gRPC                | `50051`                                                          |
+| `POSTGRES_PORT`     | Порт PostgreSQL          | `5432`                                                           |
+| `POSTGRES_USER`     | Пользователь PostgreSQL  | `postgres`                                                       |
+| `POSTGRES_PASSWORD` | Пароль PostgreSQL        | `1771`                                                           |
+| `POSTGRES_DB`       | Имя базы данных          | `subscriptions`                                                  |
+| `LOG_LEVEL`         | Уровень логирования      | `debug`                                                          |
+| `LOG_PATH`          | Путь к файлу логов       | `./logs/app.log`                                                 |
+| `LOGGER`            | Тип логгера              | `debug`                                                          |
+| `JWT_SECRET`        | Секрет для подписи JWT   | `112233`                                                         |
+| `REDIS_ADDR`        | Адрес Redis              | (пусто — используется `localhost:6379`)                          |
+| `REDIS_PORT`        | Порт Redis               | `6379`                                                           |
+| `PPROF_ENABLED`     | Включить pprof           | `false`                                                          |
+
 
 ## Архитектура
 
 Проект построен на принципах **чистой архитектуры** и разделён на 5 слоёв:
 
-| Слой                               | Папка                  | Ответственность                                                        |
-|------------------------------------|------------------------|------------------------------------------------------------------------|
-| **1. Презентационный слой (HTTP)** | `internal/handlers/`   | Принимает HTTP-запросы, парсит JSON, вызывает сервис, возвращает ответ |
-| **2. Бизнес-слой (Service)**       | `internal/service/`    | Содержит бизнес-логику: парсинг дат, валидацию, расчёты                |
-| **3. Интерфейс репозитория**       | `internal/repository/` | Определяет контракт для работы с БД (позволяет подменять реализацию)   |
-| **4. Слой данных (Repository)**    | `internal/database/`   | Реализует интерфейс репозитория, выполняет SQL-запросы                 |
-| **5. База данных**                 | PostgreSQL             | Хранит данные                                                          |
+| Слой                               | Папка                         |Ответственность                                              |
+|------------------------------------|---------------------------------------------------------------------------------------------|
+| **1. Презентационный слой (HTTP)** | `internal/handlers/rest/`     | REST: парсинг JSON, валидация, вызов сервиса, HTTP-ответ    |
+| **1. Презентационный слой (gRPC)** | `internal/handlers/grpc/`     | gRPC: обработка gRPC-запросов, вызов сервиса, gRPC-ответ    |
+|----------------------------------------------------------------------------------------------------------------------------------|
+| **2. Бизнес-слой (Service)**       | `internal/service/`           | Содержит логику: парсинг дат, валидацию, расчёты            |
+| **3. Интерфейс репозитория**       | `internal/repository/`        | Определяет контракт  с БД (позволяет подменять реализацию)  |
+| **4. Слой данных (Repository)**    | `internal/database/`          | Реализует интерфейс, выполняет SQL-запросы                  |
+| **5. База данных**                 |  PostgreSQL                   | Хранит  данные                                              |
 
-**Цепочка вызовов:**
+**Цепочка вызовов (на примере REST):**
 
 ```text
 HTTP-запрос
     ↓
-handlers (парсинг JSON, валидация)
+handlers/rest (парсинг JSON, валидация)
     ↓
 service (бизнес-логика)
     ↓
@@ -1609,41 +940,48 @@ PostgreSQL (хранилище)
 - Интерфейсы — SubscriptionRepository отделяет бизнес-логику от работы с БД
 - Внедрение зависимостей — хендлеры и сервис получают зависимости через конструкторы
 - Слабая связность — легко подменить реализацию БД или мокировать в тестах
-#### Возможные ошибки и их решение
 
-| Ошибка                                 | Решение                                                         |
-|----------------------------------------|-----------------------------------------------------------------|
-| `user_id` must always be a valid UUID  | Проверьте, что переданный user_id соответствует формату UUID    |
-| `start_date` must be in format MM-YYYY | Используйте формат: месяц (01-12) и год (1900-2100) через дефис |
-| `price` must not be negative           | Цена подписки должна быть ≥ 0                                   |
-| Database error                         | Проверьте подключение к PostgreSQL и выполнение миграций        |
+## Возможные ошибки и их решение
+
+| Ошибка                                                  | Решение                                                                  |
+|---------------------------------------------------------|--------------------------------------------------------------------------|
+| `user_id` must always be a valid UUID                   | Проверьте, что переданный user_id соответствует формату UUID             |
+| `start_date` must be in format MM-YYYY                  | Используйте формат: месяц (01-12) и год (1900-2100) через дефис          |
+| `price` must not be negative                            | Цена подписки должна быть ≥ 0                                            |
+| `cannot change start_date that is today or in the past` | Выберите дату позже сегодняшнего дня                                     |
+| `subscription with this template already exists`        | Удалите существующую подписку с этим шаблоном или выберите другой        |
+| `template_id is required`                               | Передайте `template_id` в запросе                                        |
+| `invalid token`                                         | Проверьте, что токен передан в заголовке `Authorization: Bearer <token>` |
+| `Database error`                                        | Проверьте подключение к PostgreSQL и выполнение миграций                 |
+
 ## CI/CD (GitHub Actions)
 
 Проект использует GitHub Actions для автоматического тестирования, проверки качества кода и публикации Docker-образов.
 
 ### Workflow
 
-Пайплайн состоит из трёх последовательных джобов:
+Пайплайн состоит из двух последовательных джобов:
 
 | Джоб          | Описание                                 | Условие запуска                               |
 |---------------|------------------------------------------|-----------------------------------------------|
-| Test          | Сборка и запуск тестов с PostgreSQL      | После успешного Lint                          |
+| Test          | Сборка и запуск тестов с PostgreSQL      | После Push / Pull Request                     |
 | Publish       | Публикация Docker-образа в Docker Hub    |Только при создании тега `v*` и                |
-|               |                                          | успешном прохождении всех предыдущих джобов   |
-
-#### Триггеры запуска
+                |                                          | успешном прохождении всех предыдущих джобов   |
+### Триггеры запуска
 
 | Триггер                        | Что запускается                                 |
 |--------------------------------|-------------------------------------------------|
-| **Push** в любую ветку         | Линтер + Тесты                                  |
-| **Pull Request** в любую ветку | Линтер + Тесты                                  |
-| **Создание тега `v*`**         | Линтер + Тесты + Публикация Docker-образа       |
+| **Push** в любую ветку         |  Тесты                                          |
+| **Pull Request** в любую ветку |  Тесты                                          |
+| **Создание тега `v*`**         |  Тесты + Публикация Docker-образа               |
 
-### Секреты для GitHub Actions
+
+
+
+Секреты для GitHub Actions
 Для публикации в Docker Hub в настройках репозитория должны быть установлены следующие секреты:
 
 Секрет	Описание
 DOCKER_USERNAME	Имя пользователя Docker Hub
 DOCKER_ACCESS_TOKEN	Токен доступа к Docker Hub
->>>>>>> main
-Настройка: Settings → Secrets and variables → Actions
+=======
