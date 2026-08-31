@@ -2,7 +2,7 @@
 
 [![CI/CD](https://github.com/Evgeny-08-01/Rest-user-agregator/actions/workflows/workflows.yml/badge.svg)](https://github.com/Evgeny-08-01/Rest-user-agregator/actions)
 
-**📄 Техническое задание:** [Посмотреть ТЗ](./technical%20requirements/technical%20requirements.txt)
+**📄 Техническое задание:** [Посмотреть ТЗ](./technical_requirements/technical_requirements.txt)
 
 REST API сервис для агрегации данных онлайн подписок пользователей.
 
@@ -154,10 +154,11 @@ make run
 | `make lint-fix` | Запустить `golangci-lint` с автоисправлением |
 
 ### Android (мобильное приложение)
-
+```
 | Команда              | Описание                                                    |
 -------------------------------------------------------------------------------------|
 | `make adb-reverse`   | Пробросить порты 8087 и 50051 для отладки на телефоне (USB) |
+```
 
 ---
 
@@ -182,14 +183,13 @@ make stop
 Сервер будет доступен по адресу: http://localhost:8087
 
 ### Локальный запуск (без Docker)
-
+```
 Установите PostgreSQL и создайте базу данных `subscriptions`.
-
 Создайте файл `.env` в корне проекта (скопируйте из `.env.example`):
 (Все показанные пароли демонстрационные, но соответствуют настройкам проекта)
 ⚠️ **Внимание:** Все пароли в этом файле — **демонстрационные**.  
 Для продакшена используйте реальные секреты и **не коммитьте `.env`** в репозиторий.
-
+```
 ```
 DB_PATH=postgres://postgres:1771@db:5432/subscriptions?sslmode=disable
 SERVER_PORT=8087
@@ -305,12 +305,14 @@ curl -X POST http://localhost:8087/api/login \
 Authorization: Bearer <jwt_token>
 ##### Эндпоинты подписок
 Метод	Эндпоинт	Описание
+```
 GET	/api/subscriptions	Получить список подписок
 GET	/api/subscriptions/{id}	Получить подписку по ID
 POST	/api/subscriptions	Создать подписку
 PUT	/api/subscriptions/{id}	Обновить подписку
 DELETE	/api/subscriptions/{id}	Удалить подписку
 GET	/api/subscriptions/total-cost	Суммарная стоимость за период
+```
 Получить список всех подписок
 ```
 curl -X GET http://localhost:8087/api/subscriptions \
@@ -349,11 +351,13 @@ curl -X GET "http://localhost:8087/api/subscriptions/total-cost?start_date=08-20
 Заголовок:
 Authorization: Bearer <jwt_token>
 #### Эндпоинты шаблонов
+```
 Метод	    Эндпоинт	                    Описание
 GET	      /api/templates	              Получить список всех шаблонов
 POST	    /api/admin/templates	        Создать шаблон
 PUT	      /api/admin/templates/{id}	    Обновить шаблон
 DELETE	  /api/admin/templates/{id}	    Удалить шаблон
+```
 Получить список всех шаблонов
 ```
 curl -X GET http://localhost:8087/api/templates \
@@ -701,9 +705,8 @@ p95 задержка по эндпоинтам — 95-й процентиль в
 ## Документация Swagger
 
 После запуска сервера документация доступна по адресу:
-
-
 http://localhost:8087/swagger/index.html
+
 ## Тестирование
 
 Проект покрыт двумя типами тестов:
@@ -734,6 +737,7 @@ make test-all
 | `handlers`       | 62.4%    |
 | `database`       | 47.6%    |
 | `cmd/api`        | 21.4%    |
+
 ## Миграции
 
 Миграции применяются автоматически при запуске сервера.
@@ -752,11 +756,11 @@ make test-all
 ### Откат миграций
 
 
-# Через Makefile
+#### Через Makefile
 ```bash
 make migrate-down
 ```
-# Или напрямую
+#### Или напрямую
 ```bash
 go run cmd/api/main.go -down
 ```
@@ -883,7 +887,7 @@ Rest-user-agregator/
 
 Все переменные окружения задаются в файле `.env` при локальном запуске.
 
-**В этом проекте используются только демонстрационные (фейковые) пароли**, поэтому файл `.env` не скрывается и не требует шаблона.
+**В этом проекте используются демонстрационные  пароли**
 
 При необходимости вы можете изменить значения в `.env` под свои нужды.
 
