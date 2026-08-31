@@ -161,9 +161,9 @@ make run
 **REST API:**
 ```bash
 curl http://localhost:8087/health
-```
-# {"status":"ok"}
 
+ {"status":"ok"}
+```
 gRPC API: (доступен на порту 50051)
 grpcurl -plaintext localhost:50051 list
 
@@ -392,8 +392,8 @@ curl -X DELETE http://localhost:8087/api/admin/templates/1 \
 GET	               /health	          Проверка работоспособности сервера
 GET	               /api/config	      Конфигурация для фронтенда
 Пример:
-```
-curl http://localhost:8087/health
+
+```curl http://localhost:8087/health
 {"status":"ok"}
 ```
  
@@ -574,7 +574,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
 
 ---
 
-### 1. `GET /api/subscriptions` — список подписок
+#### 1. `GET /api/subscriptions` — список подписок
 
 #### До оптимизаций (без пула, без индексов)
 
@@ -594,7 +594,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
 
 ---
 
-### 2. `GET /api/subscriptions/total-cost` — суммарная стоимость
+#### 2. `GET /api/subscriptions/total-cost` — суммарная стоимость
 
 **Перед тестом:** в БД создано **50 000 подписок**. У тестируемого пользователя 5 подписок.
 **Условия:** пул соединений уже настроен, индексы добавлены. Тестировался **тяжёлый расчёт** с формулой `EXTRACT(MONTH FROM AGE(...))`.
@@ -620,7 +620,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
 
 ---
 
-### Сравнение: кеш vs без кеша
+#### Сравнение: кеш vs без кеша
 
 | Нагрузка (RPS) | С кешем  | Без кеша | Ускорение |
 |----------------|----------|----------|-----------|
@@ -666,7 +666,7 @@ echo "GET http://localhost:8087/api/subscriptions" | vegeta attack -duration=30s
   - С кешем: **до 300 RPS**.
   - Без кеша: **до 100 RPS**.
 
-### Механизм кеширования
+#### Механизм кеширования
 
 Для обеспечения **100% консистентности** данных использовался **подход с версионированием**:
 
@@ -721,13 +721,13 @@ http://localhost:8087/swagger/index.html
 - **Интеграционные тесты** (с реальной БД) — запускаются через Docker
 
 
-# Юнит-тесты (без БД)
+#### Юнит-тесты (без БД)
 make test-u
 
-# Интеграционные тесты (с БД)
+#### Интеграционные тесты (с БД)
 make test-int
 
-# Все тесты
+#### Все тесты
 make test-all
 
 Проект покрыт юнит- и интеграционными тестами.
