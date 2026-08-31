@@ -146,12 +146,6 @@ make run
 | `make migrate-down-users` | Откатить только таблицу `users`         |
 | `make migrate-down-subs`  | Откатить только таблицу `subscriptions` |
 
-### Линтер
-
-| Команда         | Описание                                     |                   
-|-----------------|----------------------------------------------|
-| `make lint`     | Запустить `golangci-lint`                    |
-| `make lint-fix` | Запустить `golangci-lint` с автоисправлением |
 
 ### Android (мобильное приложение)
 ```
@@ -162,26 +156,35 @@ make run
 
 ---
 
-### 🚀 Быстрый старт
+### 3. Проверить работу
 
-
-#### 1. Клонировать репозиторий
-git clone https://github.com/Evgeny-08-01/Rest-user-agregator.git
-
-#### 2. Запустить сервер (БД и Redis поднимутся автоматически)
-make run
-
-#### 3. Проверить работу
+**REST API:**
+```bash
 curl http://localhost:8087/health
 ```
- {"status":"ok"}
-```
+# {"status":"ok"}
 
-#### 4. Остановить сервер
+gRPC API: (доступен на порту 50051)
+grpcurl -plaintext localhost:50051 list
+
+# subscription.SubscriptionService
+4. Остановить сервер
+
 make stop
 
-Сервер будет доступен по адресу: http://localhost:8087
+Сервер будет доступен по адресу:
 
+REST: http://localhost:8087
+
+gRPC: localhost:50051
+
+
+## 📌 Если `grpcurl` не установлен:
+
+```bash
+Установить grpcurl
+go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+```
 ### Локальный запуск (без Docker)
 ```
 Установите PostgreSQL и создайте базу данных `subscriptions`.
@@ -206,9 +209,11 @@ LOGGER=debug
 PPROF_ENABLED=false
 GRPC_PORT=50051
 ```
-Запустите сервер локально:
-make run
-Или вручную:
+#### Запустите сервер локально:
+```
+     make run
+```     
+#### Или вручную:
 ```bash
 docker-compose up -d db redis
 go run cmd/api/main.go cmd/api/init.go cmd/api/servers.go cmd/api/helpers.go
@@ -456,6 +461,7 @@ curl http://localhost:8087/health
 Подключи телефон по USB и выполни:
 adb install mobile/Sub.apk
 ####  Шаг 3. Настрой сетевой проброс
+```
 Запусти сервер
 docker-compose up -d или
 make run (локально)
@@ -463,7 +469,7 @@ make run (локально)
 adb reverse tcp:8087 tcp:8087
 Запусти приложение
 Открой приложение на телефоне и войди.
-
+```
 ## 🌐 CORS
 
 - **Разработка:** разрешён `http://localhost:8087` (порт из `SERVER_PORT`)
@@ -766,6 +772,9 @@ go run cmd/api/main.go -down
 ```
 ## Структура проекта
 
+
+## 📁 Структура проекта
+
 ```
 Rest-user-agregator/
 ├── .github/
@@ -807,7 +816,8 @@ Rest-user-agregator/
 │   │   │   └── template_handlers.go
 │   │   └── grpc/
 │   │       ├── grpc_api.go
-│   │       └── grpc_api_test.go
+│   │       ├── grpc_api_test.go
+│   │       └── helpers.go
 │   ├── metrics/
 │   │   └── metrics.go
 │   ├── middleware/
