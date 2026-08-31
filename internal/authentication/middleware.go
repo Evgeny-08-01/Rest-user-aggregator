@@ -22,7 +22,7 @@ const (
 // Если нет — возвращает 401 Unauthorized.
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		  logger.Debug("AuthMiddleware: method=%s, path=%s", r.Method, r.URL.Path)
+		logger.Debug("AuthMiddleware: method=%s, path=%s", r.Method, r.URL.Path)
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			logger.Warn("AuthMiddleware: missing Authorization header")
@@ -44,14 +44,14 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
-logger.Debug("AuthMiddleware: method=%s, path=%s, userID=%s, email=%s, role=%s",
-    r.Method, r.URL.Path, claims.UserID, claims.Email, claims.Role)
-	
+		logger.Debug("AuthMiddleware: method=%s, path=%s, userID=%s, email=%s, role=%s",
+			r.Method, r.URL.Path, claims.UserID, claims.Email, claims.Role)
+
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
 		ctx = context.WithValue(ctx, EmailKey, claims.Email)
 		ctx = context.WithValue(ctx, RoleKey, claims.Role)
-logger.Debug("AuthMiddleware: after context.WithValue, ctx.Value(UserIDKey)=%v, ctx.Value(EmailKey)=%v,ctx.Value(RoleKey))=%v", ctx.Value(UserIDKey),ctx.Value(EmailKey),ctx.Value(RoleKey))
+		logger.Debug("AuthMiddleware: after context.WithValue, ctx.Value(UserIDKey)=%v, ctx.Value(EmailKey)=%v,ctx.Value(RoleKey))=%v", ctx.Value(UserIDKey), ctx.Value(EmailKey), ctx.Value(RoleKey))
 		next(w, r.WithContext(ctx))
 	}
 }
@@ -59,6 +59,14 @@ logger.Debug("AuthMiddleware: after context.WithValue, ctx.Value(UserIDKey)=%v, 
 // GetUserID — возвращает user_id из контекста
 func GetUserID(ctx context.Context) string {
 	if v := ctx.Value(UserIDKey); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// GetUserRole - возвращаем роль пользователя RoleKey  из конекста
+func GetRole(ctx context.Context) string {
+	if v := ctx.Value(RoleKey); v != nil {
 		return v.(string)
 	}
 	return ""

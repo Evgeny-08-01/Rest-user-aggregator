@@ -75,7 +75,7 @@ func (h *Handler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Валидация обязательных полей
-	logger.Info("LoginHandler: raw request: %+v", req)  // ← добавить логирование
+	logger.Info("LoginHandler: raw request: %+v", req) // ← добавить логирование
 	if req.Email == "" || req.Password == "" {
 		logger.Warn("LoginHandler: missing email or password")
 		writeJSONError(w, http.StatusBadRequest, "Email and password are required")

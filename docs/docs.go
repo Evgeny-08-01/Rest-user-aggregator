@@ -386,10 +386,14 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "service_name": {
+                    "description": "пока оставляем для совместимости с хендлерами",
                     "type": "string"
                 },
                 "start_date": {
                     "type": "string"
+                },
+                "template_id": {
+                    "type": "integer"
                 },
                 "user_id": {
                     "type": "string"

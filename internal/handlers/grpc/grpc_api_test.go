@@ -7,23 +7,23 @@ import (
 	"testing"
 	"time"
 
-	pb "Rest-user-agregator/proto/subscription"
 	"Rest-user-agregator/internal/models"
+	"Rest-user-agregator/internal/repository"
 	"Rest-user-agregator/internal/service"
+	pb "Rest-user-agregator/proto/subscription"
+	"Rest-user-agregator/internal/authentication"
+
 	"github.com/stretchr/testify/assert"
 )
 
-// ============================================================
-// МОК-РЕПОЗИТОРИЙ
-// ============================================================
 type mockRepo struct {
-	getByIDFunc       func(ctx context.Context, id int) (*models.Subscription, error)
-	listFunc          func(ctx context.Context, limit, offset int) ([]models.Subscription, error)
-	createFunc        func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
-	updateFunc        func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
-	deleteFunc        func(ctx context.Context, id int) error
-	getTotalCostFunc  func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
-	getCacheUserVersionFunc    func(ctx context.Context, userID string) (int, error)
+	getByIDFunc                   func(ctx context.Context, id int) (*models.Subscription, error)
+	listFunc                      func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error)
+	createFunc                    func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error)
+	updateFunc                    func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error
+	deleteFunc                    func(ctx context.Context, id int) error
+	getTotalCostFunc              func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error)
+	getCacheUserVersionFunc       func(ctx context.Context, userID string) (int, error)
 	incrementCacheUserVersionFunc func(ctx context.Context, userID string) error
 }
 
@@ -34,9 +34,9 @@ func (m *mockRepo) GetSubscriptionByID(ctx context.Context, id int) (*models.Sub
 	return &models.Subscription{ID: id, ServiceName: "Test"}, nil
 }
 
-func (m *mockRepo) ListSubscriptions(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+func (m *mockRepo) ListSubscriptions(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
 	if m.listFunc != nil {
-		return m.listFunc(ctx, limit, offset)
+		return m.listFunc(ctx, userID, limit, offset)
 	}
 	return []models.Subscription{}, nil
 }
@@ -83,11 +83,6 @@ func (m *mockRepo) IncrementCacheUserVersion(ctx context.Context, userID string)
 	return nil
 }
 
-// ============================================================
-// ТЕСТЫ
-// ============================================================
-
-// 1. ПОЛУЧЕНИЕ ПОДПИСКИ ПО ID
 func TestGetSubscription(t *testing.T) {
 	repo := &mockRepo{
 		getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
@@ -102,11 +97,16 @@ func TestGetSubscription(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo)
+	server := NewSubscriptionServer(svc, templateSvc)
+
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.GetRequest{Id: 1}
-	resp, err := server.GetSubscription(context.Background(), req)
+	resp, err := server.GetSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -114,10 +114,9 @@ func TestGetSubscription(t *testing.T) {
 	assert.Equal(t, int32(100), resp.Price)
 }
 
-// 2. СПИСОК ПОДПИСОК
 func TestGetSubscriptions(t *testing.T) {
 	repo := &mockRepo{
-		listFunc: func(ctx context.Context, limit, offset int) ([]models.Subscription, error) {
+		listFunc: func(ctx context.Context, userID string, limit, offset int) ([]models.Subscription, error) {
 			return []models.Subscription{
 				{ID: 1, ServiceName: "Test1", Price: 100},
 				{ID: 2, ServiceName: "Test2", Price: 200},
@@ -125,11 +124,15 @@ func TestGetSubscriptions(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.GetSubscriptionsRequest{Limit: 10, Offset: 0}
-	resp, err := server.GetSubscriptions(context.Background(), req)
+	resp, err := server.GetSubscriptions(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
@@ -137,7 +140,6 @@ func TestGetSubscriptions(t *testing.T) {
 	assert.Equal(t, int32(1), resp.Subscriptions[0].Id)
 }
 
-// 3. СОЗДАНИЕ ПОДПИСКИ
 func TestCreateSubscription(t *testing.T) {
 	repo := &mockRepo{
 		createFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) (int, error) {
@@ -145,66 +147,92 @@ func TestCreateSubscription(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
 
 	req := &pb.CreateRequest{
-		ServiceName: "Test Create",
-		Price:       150,
-		UserId:      "test-user",
-		StartDate:   "01-2025",
-		EndDate:     "12-2025",
+		TemplateId: 1,
+		UserId:     "test-user",
+		StartDate:  "01-2029",
+		EndDate:    "12-2029",
 	}
-	resp, err := server.CreateSubscription(context.Background(), req)
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
+
+	resp, err := server.CreateSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, int32(5), resp.Id)
 }
 
-// 4. ОБНОВЛЕНИЕ ПОДПИСКИ
 func TestUpdateSubscription(t *testing.T) {
 	repo := &mockRepo{
 		updateFunc: func(ctx context.Context, sub models.Subscription, startDate time.Time, endDate *time.Time) error {
 			return nil
 		},
+		getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
+			return &models.Subscription{
+				ID:          id,
+				ServiceName: "Test",
+				UserID:      "test-user", // ← должен совпадать с user_id из контекста
+				StartDate:   "10-2026",
+				EndDate:     "12-2026",
+			}, nil
+		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
 
 	req := &pb.UpdateRequest{
-		Id:          1,
-		ServiceName: "Updated",
-		Price:       200,
-		UserId:      "test-user",
-		StartDate:   "01-2025",
-		EndDate:     "12-2025",
+		Id:         1,
+		TemplateId: 1,
+		UserId:     "test-user",
+		StartDate:  "01-2029",
+		EndDate:    "12-2029",
 	}
-	resp, err := server.UpdateSubscription(context.Background(), req)
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
+
+	resp, err := server.UpdateSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 }
-// 5. УДАЛЕНИЕ ПОДПИСКИ
+
 func TestDeleteSubscription(t *testing.T) {
 	repo := &mockRepo{
 		deleteFunc: func(ctx context.Context, id int) error {
 			return nil
 		},
+		// ✅ Добавить мок GetSubscriptionByID
+		getByIDFunc: func(ctx context.Context, id int) (*models.Subscription, error) {
+			return &models.Subscription{
+				ID:          id,
+				ServiceName: "Test",
+				UserID:      "test-user", // ← должен совпадать с user_id из контекста
+			}, nil
+		},
 	}
-
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.GetRequest{Id: 1}
-	resp, err := server.DeleteSubscription(context.Background(), req)
+	resp, err := server.DeleteSubscription(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 }
 
-// 6. ОБЩАЯ СТОИМОСТЬ
 func TestGetTotalCost(t *testing.T) {
 	repo := &mockRepo{
 		getTotalCostFunc: func(ctx context.Context, userID, serviceName string, startDate, endDate time.Time) (int, error) {
@@ -212,16 +240,20 @@ func TestGetTotalCost(t *testing.T) {
 		},
 	}
 
-	svc := service.NewSubscriptionService(repo)
-	server := NewSubscriptionServer(svc)
+	templateRepo := &repository.MockTemplateRepo{}
+	svc := service.NewSubscriptionService(repo, templateRepo)
+	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
+	server := NewSubscriptionServer(svc, templateSvc)
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.TotalCostRequest{
 		UserId:      "test-user",
 		ServiceName: "",
-		StartDate:   "01-2025",
-		EndDate:     "12-2025",
+		StartDate:   "01-2029",
+		EndDate:     "12-2029",
 	}
-	resp, err := server.GetTotalCost(context.Background(), req)
+	resp, err := server.GetTotalCost(ctx, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)

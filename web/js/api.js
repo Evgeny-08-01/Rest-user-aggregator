@@ -437,17 +437,25 @@ export function getSubscriptions() {
 
 // POST /subscriptions — создать новую подписку
 export function createSubscription(data) {
+    // data должен содержать: { template_id, start_date, end_date }
     return apiFetch('/subscriptions', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+            template_id: data.template_id,
+            start_date: data.start_date,
+            end_date: data.end_date || ''
+        }),
     });
 }
 
 // PUT /subscriptions/{id} — обновить существующую подписку
-export function updateSubscription(id, data) {
+export function updateSubscription(id, startDate, endDate) {
     return apiFetch(`/subscriptions/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+            start_date: startDate,
+            end_date: endDate || ''
+        }),
     });
 }
 
@@ -464,12 +472,8 @@ export function deleteSubscription(id) {
 //   - endDate: дата окончания (MM-YYYY)
 //   - userId: ID пользователя (опционально, для фильтрации)
 //   - serviceName: название сервиса (опционально, для фильтрации)
-export function getTotalCost(startDate, endDate, userId = '', serviceName = '') {
-    // Формируем URL с параметрами
-    let url = `/subscriptions/total-cost?start_date=${startDate}&end_date=${endDate}`;
-    if (userId) url += `&user_id=${encodeURIComponent(userId)}`;
-    if (serviceName) url += `&service_name=${encodeURIComponent(serviceName)}`;
-    return apiFetch(url);
+export function getTotalCost(startDate, endDate) {
+    return apiFetch(`/subscriptions/total-cost?start_date=${startDate}&end_date=${endDate}`);
 }
 // ============================================================
 // РЕГИСТРАЦИЯ НОВОГО ПОЛЬЗОВАТЕЛЯ

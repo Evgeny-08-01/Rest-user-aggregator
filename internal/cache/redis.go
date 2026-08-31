@@ -48,11 +48,11 @@ var client *redis.Client
 //
 // КОГДА ВЫЗЫВАТЬ:
 //   - При старте сервера (в main.go)
+//
 // ============================================================
 var enabled bool
 
 func InitRedis(addr, password string, db int) error {
-
 	// 1. СОЗДАЁМ КЛИЕНТ REDIS
 	//    redis.NewClient — создаёт структуру с настройками.
 	//    Физическое подключение откроется при первом запросе (Ping).
@@ -97,6 +97,7 @@ func InitRedis(addr, password string, db int) error {
 // ОСОБЕННОСТИ:
 //   - Если ключ не найден — возвращает 0, nil (без ошибки)
 //   - redis.Nil — специальная ошибка, означающая "ключ не найден"
+//
 // ============================================================
 func Get(ctx context.Context, key string) (int, error) {
 	if !enabled || client == nil {
@@ -132,6 +133,7 @@ func Get(ctx context.Context, key string) (int, error) {
 //
 // КОГДА ИСПОЛЬЗОВАТЬ:
 //   - После тяжёлого запроса к БД, чтобы закешировать результат
+//
 // ============================================================
 func Set(ctx context.Context, key string, value int, ttl time.Duration) error {
 	if !enabled || client == nil {
@@ -157,6 +159,7 @@ func Set(ctx context.Context, key string, value int, ttl time.Duration) error {
 //
 // КОГДА ИСПОЛЬЗОВАТЬ:
 //   - Когда нужно удалить конкретный кеш (например, при обновлении подписки)
+//
 // ============================================================
 func Delete(ctx context.Context, key string) error {
 	if !enabled || client == nil {
@@ -180,6 +183,7 @@ func Delete(ctx context.Context, key string) error {
 //
 // КОГДА ИСПОЛЬЗОВАТЬ:
 //   - Когда пользователь обновил подписку — нужно удалить все его кеши
+//
 // ============================================================
 func DeleteByPattern(ctx context.Context, pattern string) error {
 	if !enabled || client == nil {
@@ -206,6 +210,7 @@ func DeleteByPattern(ctx context.Context, pattern string) error {
 func GetClient() *redis.Client {
 	return client
 }
+
 // ============================================================
 // 8. СТРУКТУРА RedisCache — РЕАЛИЗАЦИЯ ИНТЕРФЕЙСА Cache
 // ============================================================
@@ -255,6 +260,7 @@ func (r *RedisCache) Keys(ctx context.Context, pattern string) ([]string, error)
 	}
 	return r.client.Keys(ctx, pattern).Result()
 }
+
 // PingWithContext проверяет соединение с Redis с контекстом
 func PingWithContext(ctx context.Context) error {
 	if client == nil {
@@ -262,6 +268,7 @@ func PingWithContext(ctx context.Context) error {
 	}
 	return client.Ping(ctx).Err()
 }
+
 // ============================================================
 // 9. ЗАКРЫТИЕ ПОДКЛЮЧЕНИЯ К REDIS
 // ============================================================
@@ -269,10 +276,10 @@ func PingWithContext(ctx context.Context) error {
 // Безопасно вызывать даже если клиент не инициализирован.
 // ============================================================
 func Close() error {
-    if client == nil {
-        return nil
-    }
-    err := client.Close()
-    client = nil
-    return err
+	if client == nil {
+		return nil
+	}
+	err := client.Close()
+	client = nil
+	return err
 }

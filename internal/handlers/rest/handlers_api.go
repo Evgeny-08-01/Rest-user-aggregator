@@ -2,7 +2,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"net/http"
 	"strconv"
 
@@ -22,8 +21,8 @@ import (
 // Все методы Handler используют эти сервисы для обработки запросов.
 // ============================================================
 type Handler struct {
-    Service     *service.SubscriptionService // Сервис для подписок (уже был)
-    AuthService *service.AuthService         // Сервис для авторизации (НОВЫЙ)
+	Service     *service.SubscriptionService // Сервис для подписок (уже был)
+	AuthService *service.AuthService         // Сервис для авторизации (НОВЫЙ)
 }
 
 // ============================================================
@@ -32,11 +31,12 @@ type Handler struct {
 // Принимает оба сервиса и возвращает инициализированный Handler.
 // ============================================================
 func NewHandler(svc *service.SubscriptionService, authSvc *service.AuthService) *Handler {
-    return &Handler{
-        Service:     svc,      // Сервис подписок
-        AuthService: authSvc,  // Сервис авторизации
-    }
+	return &Handler{
+		Service:     svc,     // Сервис подписок
+		AuthService: authSvc, // Сервис авторизации
+	}
 }
+
 // @Summary      Создать подписку
 // @Description  Добавляет новую подписку в базу данных
 // @Tags         subscriptions
@@ -47,24 +47,37 @@ func NewHandler(svc *service.SubscriptionService, authSvc *service.AuthService) 
 // @Failure      400  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router       /subscriptions [post]
-// 1. CreateSubscriptionHandler-Хэндлер записи одной строки
+// ============================================================
+// CreateSubscriptionHandler — создание новой подписки
+// ============================================================
+// Аналог: POST /api/subscriptions
+// ============================================================
+// Логика работы:
+//  1. Проверяет авторизацию (userID из JWT)
+//  2. Парсит JSON из тела запроса (template_id, start_date, end_date)
+//  3. Вызывает сервис (вся валидация внутри)
+//  4. Возвращает ID созданной подписки или ошибку
+//
+// ============================================================
 func (h *Handler) CreateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-   logger.Debug("получили в CreateSubscriptionHandler из преддыдущего вызова, user_id=%v, email=%v, role=%v",
-    r.Context().Value(authentication.UserIDKey),
-    r.Context().Value(authentication.EmailKey),
-    r.Context().Value(authentication.RoleKey),
-)
-// Проверяем авторизацию
-    userID, ok := r.Context().Value(authentication.UserIDKey).(string)
-    if !ok || userID == "" {
-        logger.Warn("CreateSubscriptionHandler: user_id not found or invalid")
-        writeJSONError(w, http.StatusUnauthorized, "unauthorized")
-        return
-    }
+	// 1. Проверяем авторизацию (userID из JWT)
+	//    Если user_id отсутствует или пустой — возвращаем 401 Unauthorized
+	userID, ok := r.Context().Value(authentication.UserIDKey).(string)
+	if !ok || userID == "" {
+		logger.Warn("CreateSubscriptionHandler: user_id not found or invalid")
+		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
-    ctx := r.Context()
-    var req models.Subscription
-	// 1. Распарсить JSON
+	ctx := r.Context()
+
+	// 2. Парсим JSON из тела запроса
+	//    Ожидаем: { "template_id": 1, "start_date": "08-2025", "end_date": "12-2025" }
+	var req struct {
+		TemplateID int    `json:"template_id"`
+		StartDate  string `json:"start_date"`
+		EndDate    string `json:"end_date"`
+	}
 	err := parseJSON(r, &req)
 	if err != nil {
 		logger.Warn("CreateSubscriptionHandler: failed to parse JSON: %v", err)
@@ -72,73 +85,72 @@ func (h *Handler) CreateSubscriptionHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// 2. Валидация
-	err = validateSubscription(req)
+	// 3. Вызываем сервис (ВСЯ ВАЛИДАЦИЯ ВНУТРИ)
+	//    Сервис сам проверит:
+	//    - template_id > 0 (ErrTemplateIDRequired)
+	//    - user_id не пустой (ErrUserIDRequired)
+	//    - start_date не пустой (ErrStartDateRequired)
+	//    - Существует ли шаблон (ErrTemplateNotFound)
+	//    - Корректны ли даты (ErrCannotChangeStartDate)
+	id, err := h.Service.CreateSubscription(ctx, req.TemplateID, userID, req.StartDate, req.EndDate)
 	if err != nil {
-		logger.Warn("CreateSubscriptionHandler: validation failed: %v", err)
-		writeJSONError(w, http.StatusBadRequest, "Validation error")
-		return
-	}	
-
-	// 3. Вызвать метод database.CreateSubscription-создаем запись в базе данных
-    id, err := h.Service.CreateSubscription(ctx, req)
-	if err != nil {
-		logger.Error("CreateSubscriptionHandler: database error for user_id=%s, service=%s: %v",
-			req.UserID, req.ServiceName, err)
-		writeJSONError(w, http.StatusInternalServerError, "Database error")
+		status, msg := mapErrorToStatus(err)
+		logger.Warn("Handler error: %v", err)
+		writeJSONError(w, status, msg)
 		return
 	}
-	// 4. Ответ-передаем id созданной записи в базе данных в виде JSON в теле ответа хэндлера
-	logger.Debug("CreateSubscriptionHandler: successfully created subscription id=%d for user_id=%s",
-		id, req.UserID)
+
+	// 5. Успешный ответ → 201 Created с ID созданной подписки
+	logger.Debug("CreateSubscriptionHandler: successfully created subscription id=%d for user_id=%s, template_id=%d",
+		id, userID, req.TemplateID)
 	writeJSON(w, http.StatusCreated, map[string]int{"id": id})
 }
 
 // @Summary      Получить подписку по ID
 // @Tags         subscriptions
-// @Accept       json          
-// @Produce      json          
+// @Accept       json
+// @Produce      json
 // @Param        id   path      int  true  "ID подписки"
 // @Success      200  {object}  models.Subscription
 // @Failure      400  {object}  map[string]string
 // @Failure      404  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router       /subscriptions/{id} [get]
-// GetSubscriptionHandler - хэндлер получения подписки по ID
-// Логика:
-//   1. Извлекает ID из URL-пути
-//   2. Валидирует ID (должен быть целым положительным числом)
-//   3. Вызывает сервис для получения подписки из БД
-//   4. Возвращает подписку в JSON или ошибку с соответствующим HTTP-статусом
 func (h *Handler) GetSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-    ctx := r.Context()
-    
-    // 1. Получить id из URL
-    idStr := r.PathValue("id")
-    id, err := strconv.Atoi(idStr)
-    if err != nil {
-        logger.Warn("GetSubscriptionHandler: invalid ID format: %s", idStr)
-        writeJSONError(w, http.StatusBadRequest, "Invalid ID")
-        return
-    }
+	ctx := r.Context()
 
-    // 2. Вызвать сервис для получения подписки
-    sub, err := h.Service.GetSubscriptionByID(ctx, id)
-    if err != nil {
-        logger.Error("GetSubscriptionHandler: database error for id=%d: %v", id, err)
-        writeJSONError(w, http.StatusInternalServerError, "Database error")
-        return
-    }
-    if sub == nil {
-        logger.Warn("GetSubscriptionHandler: subscription not found for id=%d", id)
-        writeJSONError(w, http.StatusNotFound, "Subscription not found")
-        return
-    }
+	// 1. Получаем ID из URL
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		logger.Warn("GetSubscriptionHandler: invalid ID format: %s", idStr)
+		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
+		return
+	}
 
-    // 3. Ответ
-    logger.Debug("GetSubscriptionHandler: successfully retrieved subscription id=%d", id)
-    writeJSON(w, http.StatusOK, sub)
+	// 2. Получаем данные пользователя из контекста (JWT)
+	userID := authentication.GetUserID(ctx)
+	role := authentication.GetRole(ctx)
+
+	// 3. Вызываем сервис (проверка прав ВНУТРИ сервиса)
+	sub, err := h.Service.GetSubscriptionByID(ctx, id, userID, role)
+	if err != nil {
+		status, msg := mapErrorToStatus(err)
+		logger.Warn("Handler error: %v", err)
+		writeJSONError(w, status, msg)
+		return
+	}
+	if sub == nil {
+		logger.Warn("GetSubscriptionHandler: subscription not found for id=%d", id)
+		writeJSONError(w, http.StatusNotFound, "Subscription not found")
+		return
+	}
+
+	// 6. Успешный ответ
+	logger.Debug("GetSubscriptionHandler: successfully retrieved subscription id=%d", id)
+	writeJSON(w, http.StatusOK, sub)
 }
+
 // @Summary     Хэндлер обновления одной строки
 // @Tags        subscriptions
 // @Accept      json
@@ -147,19 +159,26 @@ func (h *Handler) GetSubscriptionHandler(w http.ResponseWriter, r *http.Request)
 // @Param        request body models.Subscription true  "Новые данные"
 // @Success      200   {object}  map[string]string
 // @Failure      400   {object}  map[string]string
-// @Failure      404   {object}  map[string]string 
+// @Failure      404   {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router        /subscriptions/{id} [put]
-// 3. UpdateSubscriptionHandler-Хэндлер обновления одной строки
+// ============================================================
+// UpdateSubscriptionHandler — обновление подписки (REST)
+// ============================================================
+// Аналог: PUT /api/subscriptions/{id}
+// ============================================================
+// Логика работы:
+//  1. Проверяет авторизацию (userID из JWT)
+//  2. Парсит ID из URL
+//  3. Парсит JSON из тела запроса
+//  4. Вызывает сервис (вся валидация и проверка прав внутри)
+//  5. Возвращает статус обновления или ошибку
+//
+// ============================================================
 func (h *Handler) UpdateSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-   role := r.Context().Value(authentication.RoleKey).(string)
-if role != "admin" {
-    writeJSONError(w, http.StatusForbidden, "admin only")
-    return
-}
 	ctx := r.Context()
-	var req models.Subscription
-	// 1. Получить id из url
+
+	// 1. Парсим ID из URL
 	idStr := r.PathValue("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -167,35 +186,36 @@ if role != "admin" {
 		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
 		return
 	}
+
+	// 2. Парсим JSON из тела запроса
+	var req models.Subscription
 	req.ID = id
-	// 2. Распарсить JSON
-	err = parseJSON(r, &req)
-	if err != nil {
+	if err := parseJSON(r, &req); err != nil {
 		logger.Warn("UpdateSubscriptionHandler: failed to parse JSON for id=%d: %v", id, err)
 		writeJSONError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
 
-	// 3. Валидация
-	err = validateSubscription(req)
+	// 3. Получаем роль из контекста (для проверки прав в сервисе)
+	role := authentication.GetRole(ctx)
+
+	// 4. Вызов сервиса (ВСЯ ВАЛИДАЦИЯ И ПРОВЕРКА ПРАВ ВНУТРИ)
+	//    Сервис сам проверит:
+	//    - sub.ID > 0 (ErrInvalidID)
+	//    - sub.UserID не пустой (ErrUserIDRequired)
+	//    - sub.StartDate не пустой (ErrStartDateRequired)
+	//    - Права доступа (ErrPermissionDenied)
+	//    - Существует ли подписка (sql.ErrNoRows)
+	//    - Корректны ли даты (ErrCannotChangeStartDate)
+	err = h.Service.UpdateSubscription(ctx, req, role)
 	if err != nil {
-		logger.Warn("UpdateSubscriptionHandler: validation failed for id=%d: %v", id, err)
-		writeJSONError(w, http.StatusBadRequest, "Validation error")
+		status, msg := mapErrorToStatus(err)
+		logger.Warn("Handler error: %v", err)
+		writeJSONError(w, status, msg)
 		return
 	}
-	// 4.  Вызвать database.UpdateSubscription
-	err = h.Service.UpdateSubscription(ctx,req)
-if err != nil {
-    if err == sql.ErrNoRows {
-	logger.Warn("UpdateSubscriptionHandler: subscription not found for id=%d", id)
-        writeJSONError(w, http.StatusNotFound, "Subscription not found")
-    } else {
-		logger.Error("UpdateSubscriptionHandler: database error for id=%d: %v", id, err)
-        writeJSONError(w, http.StatusInternalServerError, "Database error")
-    }
-    return
-}
-	// 5. Ответ
+
+	// 6. Успешный ответ → 200 OK
 	logger.Debug("UpdateSubscriptionHandler: successfully updated subscription id=%d", id)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
@@ -207,48 +227,54 @@ if err != nil {
 // @Param        id   path      int  true  "ID подписки"
 // @Success      200 {object} map[string]string
 // @Failure      400 {object} map[string]string
-// @Failure      404  {object}  map[string]string 
+// @Failure      404  {object}  map[string]string
 // @Failure      500 {object} map[string]string
 // @Router       /subscriptions/{id} [delete]
-// DeleteSubscriptionHandler - хэндлер удаления подписки по ID
-// Логика:
-//   1. Извлекает ID из URL-пути
-//   2. Валидирует ID (должен быть целым положительным числом)
-//   3. Вызывает сервис для удаления подписки из БД
-//   4. Возвращает статус операции или ошибку с соответствующим HTTP-статусом
+// ============================================================
+// DeleteSubscriptionHandler — удаление подписки (REST)
+// ============================================================
+// Аналог: DELETE /api/subscriptions/{id}
+// ============================================================
+// Логика работы:
+//  1. Проверяет авторизацию (userID из JWT)
+//  2. Парсит ID из URL
+//  3. Вызывает сервис (вся валидация и проверка прав внутри)
+//  4. Возвращает статус удаления или ошибку
+//
+// ============================================================
 func (h *Handler) DeleteSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
-   role := r.Context().Value(authentication.RoleKey).(string)
-if role != "admin" {
-    writeJSONError(w, http.StatusForbidden, "admin only")
-    return
-}
-    ctx := r.Context()
-    
-    // 1. Получить id из URL
-    idStr := r.PathValue("id")
-    id, err := strconv.Atoi(idStr)
-    if err != nil {
-        logger.Warn("DeleteSubscriptionHandler: invalid ID format: %s", idStr)
-        writeJSONError(w, http.StatusBadRequest, "Invalid ID")
-        return
-    }
+	ctx := r.Context()
 
-    // 2. Вызвать сервис для удаления подписки
-    err = h.Service.DeleteSubscription(ctx, id)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            logger.Warn("DeleteSubscriptionHandler: subscription not found for id=%d", id)
-            writeJSONError(w, http.StatusNotFound, "Subscription not found")
-        } else {
-            logger.Error("DeleteSubscriptionHandler: database error for id=%d: %v", id, err)
-            writeJSONError(w, http.StatusInternalServerError, "Database error")
-        }
-        return
-    }
+	// 1. Парсим ID из URL
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		logger.Warn("DeleteSubscriptionHandler: invalid ID format: %s", idStr)
+		writeJSONError(w, http.StatusBadRequest, "Invalid ID")
+		return
+	}
 
-    // 3. Ответ
-    logger.Debug("DeleteSubscriptionHandler: successfully deleted subscription id=%d", id)
-    writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	// 2. Получаем user_id и роль из контекста
+	userID := authentication.GetUserID(ctx)
+	role := authentication.GetRole(ctx)
+
+	// 3. Вызов сервиса (ВСЯ ВАЛИДАЦИЯ И ПРОВЕРКА ПРАВ ВНУТРИ)
+	//    Сервис сам проверит:
+	//    - id > 0 (ErrInvalidID)
+	//    - userID не пустой (ErrUserIDRequired)
+	//    - Права доступа (ErrPermissionDenied)
+	//    - Существует ли подписка (sql.ErrNoRows)
+	err = h.Service.DeleteSubscription(ctx, id, userID, role)
+	if err != nil {
+		status, msg := mapErrorToStatus(err)
+		logger.Warn("Handler error: %v", err)
+		writeJSONError(w, status, msg)
+		return
+	}
+
+	// 5. Успешный ответ → 200 OK
+	logger.Debug("DeleteSubscriptionHandler: successfully deleted subscription id=%d", id)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 // @Summary      Хэндлер чтения всех строк по фильтру
@@ -261,60 +287,76 @@ if role != "admin" {
 // @Failure      400 {object} map[string]string
 // @Failure      500 {object} map[string]string
 // @Router        /subscriptions [get]
-// ListSubscriptionsHandler - хэндлер получения списка подписок с пагинацией
-// Логика:
-//   1. Извлекает параметры limit и offset из URL-запроса
-//   2. Валидирует параметры (limit > 0, offset >= 0)
-//   3. Вызывает сервис для получения списка подписок из БД
-//   4. Возвращает список подписок в JSON или ошибку с соответствующим HTTP-статусом
+// ============================================================
+// ListSubscriptionsHandler — получение списка подписок (REST)
+// ============================================================
+// Аналог: GET /api/subscriptions?limit=20&offset=0
+// ============================================================
+// Логика работы:
+//  1. Проверяет авторизацию (userID и роль из JWT)
+//  2. Парсит параметры пагинации (limit, offset)
+//  3. Вызывает сервис (валидация внутри)
+//  4. Возвращает список подписок или ошибку
+//
+// ============================================================
 func (h *Handler) ListSubscriptionsHandler(w http.ResponseWriter, r *http.Request) {
-    ctx := r.Context()
-    
-    // 1. Валидация параметров
-    limit := 20 // значение по умолчанию
-    offset := 0 // значение по умолчанию
-    
-    limitStr := r.URL.Query().Get("limit")
-    if limitStr != "" {
-        parsed, err := strconv.Atoi(limitStr)
-        if err != nil {
-            logger.Warn("ListSubscriptionsHandler: invalid limit value: %s", limitStr)
-            writeJSONError(w, http.StatusBadRequest, "Invalid limit")
-            return
-        }
-        if parsed > 0 {
-            limit = parsed
-        }
-    }
-    
-    offsetStr := r.URL.Query().Get("offset")
-    if offsetStr != "" {
-        parsed, err := strconv.Atoi(offsetStr)
-        if err != nil {
-            logger.Warn("ListSubscriptionsHandler: invalid offset value: %s", offsetStr)
-            writeJSONError(w, http.StatusBadRequest, "Invalid offset")
-            return
-        }
-        if parsed < 0 {
-            logger.Warn("ListSubscriptionsHandler: negative offset: %d", parsed)
-            writeJSONError(w, http.StatusBadRequest, "Negative offset")
-            return
-        }
-        offset = parsed
-    }
+	ctx := r.Context()
 
-    // 2. Вызвать сервис для получения списка подписок
-    list, err := h.Service.ListSubscriptions(ctx, limit, offset)
-    if err != nil {
-        logger.Error("ListSubscriptionsHandler: database error (limit=%d, offset=%d): %v", limit, offset, err)
-        writeJSONError(w, http.StatusInternalServerError, "Failed to get subscriptions")
-        return
-    }
+	// 1. Получаем user_id и роль из контекста
+	userID := authentication.GetUserID(ctx)
+	role := authentication.GetRole(ctx)
 
-    // 3. Ответ
-    logger.Debug("ListSubscriptionsHandler: successfully fetched %d subscriptions (limit=%d, offset=%d)",
-        len(list), limit, offset)
-    writeJSON(w, http.StatusOK, list)
+	// 2. Парсим параметры пагинации (с валидацией формата)
+	limit := 20 // значение по умолчанию
+	offset := 0 // значение по умолчанию
+
+	limitStr := r.URL.Query().Get("limit")
+	if limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil {
+			logger.Warn("ListSubscriptionsHandler: invalid limit value: %s", limitStr)
+			writeJSONError(w, http.StatusBadRequest, "Invalid limit")
+			return
+		}
+		if parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	offsetStr := r.URL.Query().Get("offset")
+	if offsetStr != "" {
+		parsed, err := strconv.Atoi(offsetStr)
+		if err != nil {
+			logger.Warn("ListSubscriptionsHandler: invalid offset value: %s", offsetStr)
+			writeJSONError(w, http.StatusBadRequest, "Invalid offset")
+			return
+		}
+		if parsed < 0 {
+			logger.Warn("ListSubscriptionsHandler: negative offset: %d", parsed)
+			writeJSONError(w, http.StatusBadRequest, "Negative offset")
+			return
+		}
+		offset = parsed
+	}
+
+	// 3. Вызываем сервис (валидация прав внутри)
+	list, err := h.Service.ListSubscriptions(ctx, userID, role, limit, offset)
+	if err != nil {
+		status, msg := mapErrorToStatus(err)
+		logger.Warn("Handler error: %v", err)
+		writeJSONError(w, status, msg)
+		return
+	}
+
+	// 5. Если nil → пустой массив
+	if list == nil {
+		list = []models.Subscription{}
+	}
+
+	// 6. Успешный ответ → 200 OK
+	logger.Debug("ListSubscriptionsHandler: successfully fetched %d subscriptions (limit=%d, offset=%d)",
+		len(list), limit, offset)
+	writeJSON(w, http.StatusOK, list)
 }
 
 // @Summary      Хэндлер для подсчета суммарной стоимости всех подписок за выбранный период
@@ -328,31 +370,36 @@ func (h *Handler) ListSubscriptionsHandler(w http.ResponseWriter, r *http.Reques
 // @Success      200  {object}  map[string]int  "суммарная стоимость всех подписок"
 // @Failure      500 {object}  map[string]string
 // @Router       /subscriptions/total-cost [get]
-//  6. GetTotalCostHandler-Хэндлер для подсчета суммарной стоимости всех подписок за
-//     выбранный период с фильтрацией по id пользователя и названию подписки
-func (h *Handler)GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
+// ============================================================
+// GetTotalCostHandler — расчёт суммарной стоимости подписок (REST)
+// ============================================================
+func (h *Handler) GetTotalCostHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	// 1. Получаем параметры из URL (не парсим JSON)
-	userID := r.URL.Query().Get("user_id")
+
+	role := authentication.GetRole(ctx)
+	var userID string
+	if role == "admin" {
+		userID = ""
+	} else {
+		userID = authentication.GetUserID(ctx)
+	}
+
 	serviceName := r.URL.Query().Get("service_name")
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
+
 	logger.Debug("GetTotalCostHandler: request params - user_id=%s, service_name=%s, start_date=%s, end_date=%s",
 		userID, serviceName, startDate, endDate)
 
-	//  2. Вызвать database.GetTotalCost
-total, err := h.Service.GetTotalCost(ctx, userID, serviceName, startDate, endDate)
-if err != nil {
-    if err.Error() == "start_date > end_date" {
-	logger.Warn("GetTotalCostHandler: invalid date range - start_date=%s, end_date=%s", startDate, endDate)
-        writeJSONError(w, http.StatusBadRequest, "start_date > end_date")
-    } else {
-		logger.Error("GetTotalCostHandler: database error: %v", err)
-        writeJSONError(w, http.StatusInternalServerError, "Database error")
-    }
-    return
-}
-	// 3. Ответ
-logger.Debug("GetTotalCostHandler: successfully calculated total=%d", total)
+	// Вызываем сервис (вся валидация внутри)
+	total, err := h.Service.GetTotalCost(ctx, userID, serviceName, startDate, endDate)
+	if err != nil {
+		status, msg := mapErrorToStatus(err)
+		logger.Warn("Handler error: %v", err)
+		writeJSONError(w, status, msg)
+		return
+	}
+
+	logger.Debug("GetTotalCostHandler: successfully calculated total=%d", total)
 	writeJSON(w, http.StatusOK, map[string]int{"total": total})
 }

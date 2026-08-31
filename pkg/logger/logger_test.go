@@ -11,17 +11,17 @@ import (
 func captureLogOutput(f func()) string {
 	// Сохраняем старый вывод
 	oldOutput := log.Writer()
-	
+
 	// Создаём буфер
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
-	
+
 	// Выполняем функцию
 	f()
-	
+
 	// Восстанавливаем старый вывод
 	log.SetOutput(oldOutput)
-	
+
 	return buf.String()
 }
 
@@ -83,25 +83,25 @@ func TestStringMethod(t *testing.T) {
 func TestLogOutput(t *testing.T) {
 	// Тест проверяет, что логи пишутся в правильном формате
 	// НЕ вызываем Init() - используем стандартный log.SetOutput
-	
+
 	output := captureLogOutput(func() {
 		// Временно устанавливаем уровень вручную для теста
 		currentLevel = DEBUG
-		
+
 		// Пишем логи напрямую через internalLog
 		internalLog(DEBUG, "debug message")
 		internalLog(INFO, "info message")
 		internalLog(WARN, "warn message")
 		internalLog(ERROR, "error message")
 	})
-	
+
 	expectedStrings := []string{
 		"[DEBUG] debug message",
 		"[INFO] info message",
 		"[WARN] warn message",
 		"[ERROR] error message",
 	}
-	
+
 	for _, expected := range expectedStrings {
 		if !bytes.Contains([]byte(output), []byte(expected)) {
 			t.Errorf("Expected to contain '%s'\nGot:\n%s", expected, output)
@@ -111,49 +111,49 @@ func TestLogOutput(t *testing.T) {
 
 func TestLevelFilteringOutput(t *testing.T) {
 	tests := []struct {
-		name       string
-		level      Level
-		shouldSee  []string
+		name         string
+		level        Level
+		shouldSee    []string
 		shouldNotSee []string
 	}{
 		{
-			name:       "debug sees everything",
-			level:      DEBUG,
-			shouldSee:  []string{"[DEBUG]", "[INFO]", "[WARN]", "[ERROR]"},
+			name:         "debug sees everything",
+			level:        DEBUG,
+			shouldSee:    []string{"[DEBUG]", "[INFO]", "[WARN]", "[ERROR]"},
 			shouldNotSee: []string{},
 		},
 		{
-			name:       "info sees info,warn,error",
-			level:      INFO,
-			shouldSee:  []string{"[INFO]", "[WARN]", "[ERROR]"},
+			name:         "info sees info,warn,error",
+			level:        INFO,
+			shouldSee:    []string{"[INFO]", "[WARN]", "[ERROR]"},
 			shouldNotSee: []string{"[DEBUG]"},
 		},
 		{
-			name:       "warn sees warn,error",
-			level:      WARN,
-			shouldSee:  []string{"[WARN]", "[ERROR]"},
+			name:         "warn sees warn,error",
+			level:        WARN,
+			shouldSee:    []string{"[WARN]", "[ERROR]"},
 			shouldNotSee: []string{"[DEBUG]", "[INFO]"},
 		},
 		{
-			name:       "error sees only error",
-			level:      ERROR,
-			shouldSee:  []string{"[ERROR]"},
+			name:         "error sees only error",
+			level:        ERROR,
+			shouldSee:    []string{"[ERROR]"},
 			shouldNotSee: []string{"[DEBUG]", "[INFO]", "[WARN]"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			output := captureLogOutput(func() {
 				// Устанавливаем уровень фильтрации
 				currentLevel = tt.level
-				
+
 				internalLog(DEBUG, "debug msg")
 				internalLog(INFO, "info msg")
 				internalLog(WARN, "warn msg")
 				internalLog(ERROR, "error msg")
 			})
-			
+
 			for _, s := range tt.shouldSee {
 				if !bytes.Contains([]byte(output), []byte(s)) {
 					t.Errorf("Expected to see '%s', but got:\n%s", s, output)
@@ -173,7 +173,7 @@ func TestWarnOutput(t *testing.T) {
 		currentLevel = DEBUG
 		Warn("test warning: %d", 42)
 	})
-	
+
 	if !bytes.Contains([]byte(output), []byte("[WARN] test warning: 42")) {
 		t.Errorf("Expected '[WARN] test warning: 42'\nGot:\n%s", output)
 	}
@@ -184,7 +184,7 @@ func TestErrorOutput(t *testing.T) {
 		currentLevel = DEBUG
 		Error("test error: %s", "something")
 	})
-	
+
 	if !bytes.Contains([]byte(output), []byte("[ERROR] test error: something")) {
 		t.Errorf("Expected '[ERROR] test error: something'\nGot:\n%s", output)
 	}
@@ -195,7 +195,7 @@ func TestDebugOutput(t *testing.T) {
 		currentLevel = DEBUG
 		Debug("debug value: %v", true)
 	})
-	
+
 	if !bytes.Contains([]byte(output), []byte("[DEBUG] debug value: true")) {
 		t.Errorf("Expected '[DEBUG] debug value: true'\nGot:\n%s", output)
 	}
@@ -206,7 +206,7 @@ func TestInfoOutput(t *testing.T) {
 		currentLevel = DEBUG
 		Info("info: %s", "started")
 	})
-	
+
 	if !bytes.Contains([]byte(output), []byte("[INFO] info: started")) {
 		t.Errorf("Expected '[INFO] info: started'\nGot:\n%s", output)
 	}
@@ -217,7 +217,7 @@ func TestMultipleArguments(t *testing.T) {
 		currentLevel = DEBUG
 		Debug("values: %s, %d, %v", "string", 42, true)
 	})
-	
+
 	if !bytes.Contains([]byte(output), []byte("values: string, 42, true")) {
 		t.Errorf("Expected 'values: string, 42, true'\nGot:\n%s", output)
 	}

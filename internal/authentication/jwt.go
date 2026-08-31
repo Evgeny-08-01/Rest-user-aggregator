@@ -2,6 +2,7 @@
 package authentication
 
 import (
+	"Rest-user-agregator/pkg/logger"
 	"errors"
 	"os"
 	"time"
@@ -23,6 +24,7 @@ import (
 // RegisteredClaims — стандартные поля JWT:
 //   - ExpiresAt → когда токен истекает
 //   - IssuedAt  → когда выдан
+//
 // ============================================================
 type Claims struct {
 	UserID string `json:"user_id"`
@@ -46,10 +48,11 @@ type Claims struct {
 //   - error  → ошибка, если не удалось создать
 //
 // АЛГОРИТМ:
-//   1. Берём секрет из переменной окружения JWT_SECRET
-//   2. Устанавливаем время жизни токена (24 часа)
-//   3. Создаём claims с данными пользователя
-//   4. Подписываем токен с использованием HS256
+//  1. Берём секрет из переменной окружения JWT_SECRET
+//  2. Устанавливаем время жизни токена (24 часа)
+//  3. Создаём claims с данными пользователя
+//  4. Подписываем токен с использованием HS256
+//
 // ============================================================
 func GenerateToken(userID, email, role string) (string, error) {
 	// 1. Получаем секрет из переменной окружения
@@ -58,8 +61,8 @@ func GenerateToken(userID, email, role string) (string, error) {
 		return "", errors.New("JWT_SECRET is not set in .env file")
 	}
 
-	// 2. Устанавливаем время жизни токена (24 часа)
-	expirationTime := time.Now().Add(24 * time.Hour)
+	// 2. Устанавливаем время жизни токена (10000 часа-для упрощения тестирования)
+	expirationTime := time.Now().Add(10000 * time.Hour) // 10000- для упрощения тестирования
 
 	// 3. Создаём claims (данные, которые будут в токене)
 	claims := Claims{
@@ -93,14 +96,21 @@ func GenerateToken(userID, email, role string) (string, error) {
 //   - error   → ошибка, если токен недействителен
 //
 // АЛГОРИТМ:
-//   1. Берём секрет из переменной окружения
-//   2. Парсим токен, проверяем подпись
-//   3. Проверяем срок действия (не истёк ли)
-//   4. Возвращаем claims, если всё ок
+//  1. Берём секрет из переменной окружения
+//  2. Парсим токен, проверяем подпись
+//  3. Проверяем срок действия (не истёк ли)
+//  4. Возвращаем claims, если всё ок
+//
 // ============================================================
 func ValidateToken(tokenString string) (*Claims, error) {
 	// 1. Получаем секрет из переменной окружения
+	logger.Debug("ValidateToken: START checking token")
 	secret := os.Getenv("JWT_SECRET")
+	logger.Debug("ValidateToken: secret length = %d", len(secret))
+	if secret == "" {
+		logger.Warn("ValidateToken: JWT_SECRET is not set")
+		return nil, errors.New("JWT_SECRET is not set")
+	}
 	if secret == "" {
 		return nil, errors.New("JWT_SECRET is not set")
 	}
@@ -142,6 +152,7 @@ func ValidateToken(tokenString string) (*Claims, error) {
 // ВОЗВРАЩАЕТ:
 //   - string → UserID
 //   - error  → ошибка, если токен невалиден
+//
 // ============================================================
 func GetUserIDFromToken(tokenString string) (string, error) {
 	claims, err := ValidateToken(tokenString)

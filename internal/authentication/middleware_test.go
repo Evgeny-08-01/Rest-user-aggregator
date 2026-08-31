@@ -1,11 +1,12 @@
 //go:build unit
+
 // Сборка только для юнит-тестов (запуск: go test -tags=unit)
 // Юнит-тесты не требуют реальной БД и используют моки
 
 package authentication
 
 import (
-	"context" 
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -205,9 +206,10 @@ func TestGetUserID(t *testing.T) {
 	// 9. Проверяем, что user_id извлечён правильно
 	assert.Equal(t, "user-123", capturedUserID)
 }
+
 // TestGetUserID_Empty — проверяет возврат пустой строки, если user_id нет
 func TestGetUserID_Empty(t *testing.T) {
-    ctx := context.Background()
-    userID := GetUserID(ctx)
-    assert.Equal(t, "", userID)
+	ctx := context.Background()
+	userID := GetUserID(ctx)
+	assert.Equal(t, "", userID)
 }

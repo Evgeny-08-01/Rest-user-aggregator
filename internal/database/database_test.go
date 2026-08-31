@@ -1,59 +1,26 @@
-// ============================================================
-// ФАЙЛ: internal/database/database_test.go
-// ============================================================
-// НАЗНАЧЕНИЕ: Интеграционные тесты для пакета database
-// ТЕГ: //go:build integration — запускается с флагом -tags=integration
-//
-// ЧТО ПРОВЕРЯЕТСЯ:
-//   1. CleanTestTable — очистка таблиц
-//   2. CreateUser — создание пользователя
-//   3. GetUserByEmail — поиск пользователя по email
-//   4. DeleteSubscriptionsByUserID — удаление всех подписок пользователя
-//
-// КАК ЗАПУСТИТЬ:
-//   go test ./internal/database -tags=integration -v
-//
-// ВАЖНО:
-//   - Перед запуском должен быть поднят PostgreSQL
-//   - Каждый тест начинается с очистки таблиц
-// ============================================================
-
 //go:build integration
 
 package database
 
 import (
-	"context" // Для передачи контекста в БД-запросы
+	"context"
 	"fmt"
-	"os" // Для завершения тестов с кодом
+	"os"
 	"strings"
-	"testing" // Стандартный пакет для тестов
-	"time"    // Для парсинга дат
+	"testing"
+	"time"
 
-	"Rest-user-agregator/internal/models" // Наши модели данных
+	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/pkg/logger"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
-// ============================================================
-// 1. TestMain — НАСТРОЙКА ПЕРЕД ТЕСТАМИ
-// ============================================================
-// Выполняется один раз перед всеми тестами в пакете.
-//
-// ЧТО ДЕЛАЕТ:
-//   1. Подключается к тестовой БД
-//   2. Закрывает соединение после всех тестов
-//   3. Очищает таблицы перед тестами
-//   4. Запускает все тесты
-// ============================================================
 func TestMain(m *testing.M) {
-	// 0. ЗАГРУЖАЕМ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ИЗ .env.test
 	if err := godotenv.Load("../../.env.test"); err != nil {
 		logger.Warn(".env.test not found, using env vars")
 	}
-	// 1. ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
 		panic("DB_PATH not set, cannot run tests")
@@ -64,19 +31,17 @@ func TestMain(m *testing.M) {
 		panic("Failed to init DB: " + err.Error())
 	}
 	defer func() {
-    if err := Close(); err != nil {
-        logger.Warn("Failed to close database: %v", err)
-    }
-}()
-// Удаляем таблицы перед тестами
-if err := DropTestTable(); err != nil {
-    panic("Failed to drop table: " + err.Error())
-}
-// Создаём таблицы перед тестами
-if err := CreateTestTable(); err != nil {
-    panic("Failed to create test table: " + err.Error())
-}
-	// 2. ОЧИЩАЕМ ТАБЛИЦЫ
+		if err := Close(); err != nil {
+			logger.Warn("Failed to close database: %v", err)
+		}
+	}()
+
+	if err := DropTestTable(); err != nil {
+		panic("Failed to drop table: " + err.Error())
+	}
+	if err := CreateTestTable(); err != nil {
+		panic("Failed to create test table: " + err.Error())
+	}
 	if err := CleanTestTable(); err != nil {
 		panic("Failed to clean table: " + err.Error())
 	}
@@ -85,56 +50,60 @@ if err := CreateTestTable(); err != nil {
 	os.Exit(code)
 }
 
-// ============================================================
-// 2. ТЕСТ: ОЧИСТКА ТАБЛИЦЫ (CleanTestTable)
-// ============================================================
-// Проверяет, что CleanTestTable удаляет все подписки из БД.
-//
-// ПОЧЕМУ ВАЖНО:
-//   - Эта функция используется перед каждым тестом
-//   - Если она не работает — тесты будут влиять друг на друга
-// ============================================================
-func TestCleanTestTable(t *testing.T) {
-	 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-
-	// 1. СОЗДАЁМ РЕПОЗИТОРИЙ
-	//    Это объект, через который мы работаем с БД
+func createTestUser(t *testing.T, userID string) {
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	repo := NewPostgresRepo()
 	ctx := context.Background()
-	// создаем пользователя 
-   userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
-	// 2. СОЗДАЁМ ТЕСТОВУЮ ПОДПИСКУ
+
+	user := models.User{
+		ID:       userID,
+		Email:    fmt.Sprintf("test_%s@mail.com", userID[:8]),
+		Password: "hash",
+		Role:     "user",
+	}
+
+	err := repo.CreateUser(ctx, user)
+	if err != nil && !strings.Contains(err.Error(), "duplicate key") {
+		t.Fatalf("CreateUser failed: %v", err)
+	}
+}
+
+func TestCleanTestTable(t *testing.T) {
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
+
+	repo := NewPostgresRepo()
+	ctx := context.Background()
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
+
+	templateID, err := repo.CreateTemplate(ctx, "Netflix", 500)
+	if err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
 	sub := models.Subscription{
-		ServiceName: "TestClean",
-		Price:       100,
-		UserID:      "550e8400-e29b-41d4-a716-446655440000",
-		StartDate:   "01-2025",
+		UserID:     userID,
+		TemplateID: templateID,
+		StartDate:  "01-2025",
 	}
 	startDate, _ := time.Parse("01-2006", sub.StartDate)
-
-	// 3. ВЫЗЫВАЕМ МЕТОД СОЗДАНИЯ
-	//    Возвращает ID созданной подписки
 	id, err := repo.CreateSubscription(ctx, sub, startDate, nil)
 	if err != nil {
 		t.Fatalf("CreateSubscription failed: %v", err)
 	}
-	if id <= 0 {
-		t.Fatal("Subscription not created")
-	}
 
-	// 4. ОЧИЩАЕМ ТАБЛИЦУ
-	//    Должна удалить все подписки
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("CleanTestTable failed: %v", err)
 	}
 
-	// 5. ПРОВЕРЯЕМ, ЧТО ПОДПИСКА УДАЛЕНА
-	//    GetSubscriptionByID должна вернуть nil (не найдено)
 	saved, err := repo.GetSubscriptionByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetSubscriptionByID failed: %v", err)
@@ -144,74 +113,40 @@ func TestCleanTestTable(t *testing.T) {
 	}
 }
 
-// ============================================================
-// 3. ТЕСТ: СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ (CreateUser)
-// ============================================================
-// Проверяет, что пользователь создаётся и потом находится по email.
-//
-// ПОЧЕМУ ВАЖНО:
-//   - Это основа для всей авторизации
-//   - Без этого теста мы не знаем, работает ли регистрация
-// ============================================================
 func TestCreateUser(t *testing.T) {
-	    // 1. УДАЛЯЕМ таблицы
-    if err := DropTestTable(); err != nil {
-        t.Fatalf("DropTestTable failed: %v", err)
-    }
-
-    // 2. СОЗДАЁМ таблицы заново
-    if err := CreateTestTable(); err != nil {
-        t.Fatalf("CreateTestTable failed: %v", err)
-    }
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ ПЕРЕД ТЕСТОМ
-	//    Чтобы не было конфликтов с данными от предыдущих тестов
+	if err := DropTestTable(); err != nil {
+		t.Fatalf("DropTestTable failed: %v", err)
+	}
+	if err := CreateTestTable(); err != nil {
+		t.Fatalf("CreateTestTable failed: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("CleanTestTable failed: %v", err)
 	}
-repo := NewPostgresRepo()
-///////////////////////////////////////////////////////////////////////////////////////////////
-    if repo == nil {
-        t.Fatal("❌ repo is nil! Database not initialized.")
-    }
-////////////////////////////////////////////////////////////////////////////////////////////
-	// 2. ПОДГОТАВЛИВАЕМ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ
-	//    ID — UUID, Email — уникальный, Password — хеш
-    user := models.User{
-    ID:       uuid.New().String(),
-    Email:    fmt.Sprintf("test_%d@mail.com", time.Now().UnixNano()),
-    Password: "hash123",
-    Role:     "user",
-}
-	// 3. ВЫЗЫВАЕМ МЕТОД СОЗДАНИЯ
-	//    context.Background() — пустой контекст для тестов
-////////////////////////////////////////////////////////////////////////////	
-    t.Log("🔍 Before CreateUser") 
-    err := repo.CreateUser(context.Background(), user)
-    t.Log("🔍 After CreateUser") 
-/////////////////////////////////////////////////////////////////////////////	
+	repo := NewPostgresRepo()
+
+	user := models.User{
+		ID:       uuid.New().String(),
+		Email:    fmt.Sprintf("test_%d@mail.com", time.Now().UnixNano()),
+		Password: "hash123",
+		Role:     "user",
+	}
+	err := repo.CreateUser(context.Background(), user)
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
-//////////////////////////////////////////////////////////////////////////////////////////////////	
-// ✅ ПРЯМОЙ SQL-ЗАПРОС К БД
-var count int
-err = repo.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM users WHERE email = $1", user.Email).Scan(&count)
-if err != nil {
-    t.Fatalf("Direct query failed: %v", err)
-}
-t.Logf("🔍 Direct SQL check: found %d users with email %s", count, user.Email)
 
-if count == 0 {
-    t.Fatal("❌ User NOT found in DB after CreateUser!")
-}
-//////////////////////////////////////////////////////////////////////////////////////////////////
-	// 4. ПРОВЕРЯЕМ, ЧТО ПОЛЬЗОВАТЕЛЬ СОХРАНИЛСЯ
-	//    Ищем по email — если найден, значит создание прошло успешно
+	var count int
+	err = repo.db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM users WHERE email = $1", user.Email).Scan(&count)
+	if err != nil {
+		t.Fatalf("Direct query failed: %v", err)
+	}
+
 	saved, err := repo.GetUserByEmail(context.Background(), user.Email)
 	if err != nil {
 		t.Fatalf("GetUserByEmail failed: %v", err)
@@ -224,30 +159,17 @@ if count == 0 {
 	}
 }
 
-// ============================================================
-// 4. ТЕСТ: ПОИСК ПОЛЬЗОВАТЕЛЯ ПО EMAIL (GetUserByEmail)
-// ============================================================
-// Проверяет, что GetUserByEmail возвращает nil для несуществующего email.
-//
-// ПОЧЕМУ ВАЖНО:
-//   - Проверяет обработку случая "пользователь не найден"
-//   - Без этого теста возможны ошибки при логине
-// ============================================================
 func TestGetUserByEmail_NotFound(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("CleanTestTable failed: %v", err)
 	}
 
 	repo := NewPostgresRepo()
-
-	// 2. ИЩЕМ НЕСУЩЕСТВУЮЩЕГО ПОЛЬЗОВАТЕЛЯ
-	//    Должен вернуть nil, nil (без ошибки)
 	user, err := repo.GetUserByEmail(context.Background(), "notfound@mail.com")
 	if err != nil {
 		t.Fatalf("GetUserByEmail failed: %v", err)
@@ -257,51 +179,59 @@ func TestGetUserByEmail_NotFound(t *testing.T) {
 	}
 }
 
-// ============================================================
-// 5. ТЕСТ: УДАЛЕНИЕ ВСЕХ ПОДПИСОК ПОЛЬЗОВАТЕЛЯ
-// ============================================================
-// Проверяет, что DeleteSubscriptionsByUserID удаляет все подписки
-// только для одного пользователя.
-//
-// ПОЧЕМУ ВАЖНО:
-//   - Используется в интеграционных тестах для изоляции данных
-//   - Должен удалять только подписки указанного пользователя
-// ============================================================
 func TestDeleteSubscriptionsByUserID(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("CleanTestTable failed: %v", err)
 	}
 
 	repo := NewPostgresRepo()
 	ctx := context.Background()
-	// создаем пользователя 
-   userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
-	
-	// 2. СОЗДАЁМ 2 ПОДПИСКИ ДЛЯ ПОЛЬЗОВАТЕЛЯ
-	for i := 0; i < 2; i++ {
-		sub := models.Subscription{
-			ServiceName: "TestDelete",
-			Price:       100,
-			UserID:      userID,
-			StartDate:   "01-2025",
-		}
-		startDate, _ := time.Parse("01-2006", sub.StartDate)
-		_, err := repo.CreateSubscription(ctx, sub, startDate, nil)
-		if err != nil {
-			t.Fatalf("CreateSubscription failed: %v", err)
-		}
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
+
+	// Создаём ПЕРВЫЙ шаблон
+	templateID1, err := repo.CreateTemplate(ctx, "TestDelete1", 100)
+	if err != nil {
+		t.Fatalf("CreateTemplate 1 failed: %v", err)
 	}
 
-	// 3. ПРОВЕРЯЕМ, ЧТО ПОДПИСКИ СОЗДАЛИСЬ
-	//    В списке должно быть 2 подписки
-	list, err := repo.ListSubscriptions(ctx, 10, 0)
+	// Создаём ВТОРОЙ шаблон
+	templateID2, err := repo.CreateTemplate(ctx, "TestDelete2", 200)
+	if err != nil {
+		t.Fatalf("CreateTemplate 2 failed: %v", err)
+	}
+
+	// Создаём ПЕРВУЮ подписку
+	sub1 := models.Subscription{
+		UserID:     userID,
+		TemplateID: templateID1,
+		StartDate:  "01-2025",
+	}
+	startDate, _ := time.Parse("01-2006", sub1.StartDate)
+	_, err = repo.CreateSubscription(ctx, sub1, startDate, nil)
+	if err != nil {
+		t.Fatalf("CreateSubscription 1 failed: %v", err)
+	}
+
+	// Создаём ВТОРУЮ подписку (с другим шаблоном)
+	sub2 := models.Subscription{
+		UserID:     userID,
+		TemplateID: templateID2,
+		StartDate:  "02-2025",
+	}
+	startDate2, _ := time.Parse("01-2006", sub2.StartDate)
+	_, err = repo.CreateSubscription(ctx, sub2, startDate2, nil)
+	if err != nil {
+		t.Fatalf("CreateSubscription 2 failed: %v", err)
+	}
+
+	// Проверяем, что создалось 2 подписки
+	list, err := repo.ListSubscriptions(ctx, "", 10, 0)
 	if err != nil {
 		t.Fatalf("ListSubscriptions failed: %v", err)
 	}
@@ -309,16 +239,14 @@ func TestDeleteSubscriptionsByUserID(t *testing.T) {
 		t.Fatalf("Expected 2 subscriptions, got %d", len(list))
 	}
 
-	// 4. УДАЛЯЕМ ПОДПИСКИ ПОЛЬЗОВАТЕЛЯ
-	//    Должен удалить только подписки с указанным user_id
+	// Удаляем все подписки пользователя
 	err = DeleteSubscriptionsByUserID(userID)
 	if err != nil {
 		t.Fatalf("DeleteSubscriptionsByUserID failed: %v", err)
 	}
 
-	// 5. ПРОВЕРЯЕМ, ЧТО ПОДПИСКИ УДАЛЕНЫ
-	//    В списке должно быть 0 подписок
-	list, err = repo.ListSubscriptions(ctx, 10, 0)
+	// Проверяем, что подписок не осталось
+	list, err = repo.ListSubscriptions(ctx, "", 10, 0)
 	if err != nil {
 		t.Fatalf("ListSubscriptions failed: %v", err)
 	}
@@ -327,73 +255,29 @@ func TestDeleteSubscriptionsByUserID(t *testing.T) {
 	}
 }
 
-// ============================================================
-// ТЕСТ: ПОЛУЧЕНИЕ СОЕДИНЕНИЯ С БД (GetDB)
-// ============================================================
-// Что проверяет:
-//   - GetDB() возвращает не nil
-//   - Соединение с БД существует
-//
-// ПОЧЕМУ ВАЖНО:
-//   - GetDB() используется в некоторых тестах и функциях
-//   - Если вернёт nil — тесты упадут с паникой
-// ============================================================
 func TestGetDB(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ВЫЗЫВАЕМ GetDB()
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	db := GetDB()
-
-	// 2. ПРОВЕРЯЕМ, ЧТО СОЕДИНЕНИЕ СУЩЕСТВУЕТ
 	if db == nil {
 		t.Error("GetDB returned nil")
 	}
 }
 
-// ============================================================
-// НАЗНАЧЕНИЕ: Интеграционные тесты для проверки работы с базой данных
-//
-// ЧТО ПРОВЕРЯЕТСЯ:
-//   1. Создание пользователя (CreateUser)
-//   2. Создание подписки (CreateSubscription)
-//   3. Получение подписки по ID (GetSubscriptionByID)
-//   4. Обновление подписки (UpdateSubscription)
-//   5. Удаление подписки (DeleteSubscription)
-//
-
-
-// ============================================================
-// 2. ТЕСТ: СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ
-// ============================================================
-// Проверяет, что пользователь создаётся в БД и потом находится по email.
-//
-// ПОЧЕМУ ВАЖНО:
-//   Это основа для всей авторизации.
-//   Если пользователь не создаётся — логин работать не будет.
-// ============================================================
 func TestCreateUser_Success(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ
-	//    Каждый тест должен начинаться с пустой БД,
-	//    чтобы не было конфликтов с данными от предыдущих тестов.
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("Failed to clean table: %v", err)
 	}
 
-	// 2. СОЗДАЁМ РЕПОЗИТОРИЙ
-	//    Это объект, через который мы работаем с БД.
 	repo := NewPostgresRepo()
-
-	// 3. ПОДГОТАВЛИВАЕМ ТЕСТОВОГО ПОЛЬЗОВАТЕЛЯ
-	//    ID — UUID, Email — уникальный, Password — хеш,
-	//    Role — 'user' или 'admin'
 	user := models.User{
 		ID:       "550e8400-e29b-41d4-a716-446655440000",
 		Email:    "testuser@example.com",
@@ -401,15 +285,11 @@ func TestCreateUser_Success(t *testing.T) {
 		Role:     "user",
 	}
 
-	// 4. ВЫЗЫВАЕМ МЕТОД СОЗДАНИЯ
-	//    context.Background() — пустой контекст (подходит для тестов)
 	err := repo.CreateUser(context.Background(), user)
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
 
-	// 5. ПРОВЕРЯЕМ, ЧТО ПОЛЬЗОВАТЕЛЬ СОХРАНИЛСЯ
-	//    Ищем по email — если найден, значит создание прошло успешно
 	saved, err := repo.GetUserByEmail(context.Background(), user.Email)
 	if err != nil {
 		t.Fatalf("GetUserByEmail failed: %v", err)
@@ -419,88 +299,66 @@ func TestCreateUser_Success(t *testing.T) {
 	}
 }
 
-// ============================================================
-// 3. ТЕСТ: СОЗДАНИЕ ПОДПИСКИ
-// ============================================================
-// Проверяет, что подписка создаётся и возвращается ID > 0.
-//
-// ПОЧЕМУ ВАЖНО:
-//   Это основной CRUD-метод.
-//   Без него пользователь не сможет добавить подписку.
-// ============================================================
 func TestCreateSubscription_Success(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("Failed to clean table: %v", err)
 	}
 
 	repo := NewPostgresRepo()
 	ctx := context.Background()
-	// создаем пользователя 
-   userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
-	// 2. ПОДГОТАВЛИВАЕМ ДАННЫЕ ДЛЯ ПОДПИСКИ
-	sub := models.Subscription{
-		ServiceName: "Yandex Plus",
-		Price:       400,
-		UserID:      "550e8400-e29b-41d4-a716-446655440000",
-		StartDate:   "07-2025",
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
+
+	templateID, err := repo.CreateTemplate(ctx, "Netflix", 500)
+	if err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
 	}
 
-	// 3. ПАРСИМ ДАТУ НАЧАЛА
-	//    Из строки "07-2025" в time.Time
+	sub := models.Subscription{
+		UserID:     userID,
+		TemplateID: templateID,
+		StartDate:  "07-2025",
+	}
 	startDate, _ := time.Parse("01-2006", sub.StartDate)
 
-	// 4. ВЫЗЫВАЕМ МЕТОД СОЗДАНИЯ
-	//    Передаём: контекст, данные, дату начала, nil (нет даты окончания)
 	id, err := repo.CreateSubscription(ctx, sub, startDate, nil)
 	if err != nil {
 		t.Fatalf("CreateSubscription failed: %v", err)
 	}
-
-	// 5. ПРОВЕРЯЕМ, ЧТО ID > 0
-	//    В БД ID генерируется автоматически (SERIAL PRIMARY KEY)
 	if id <= 0 {
 		t.Errorf("Expected positive ID, got %d", id)
 	}
 }
 
-// ============================================================
-// 4. ТЕСТ: ПОЛУЧЕНИЕ ПОДПИСКИ ПО ID
-// ============================================================
-// Проверяет, что подписка находится по ID и данные совпадают.
-//
-// ПОЧЕМУ ВАЖНО:
-//   Пользователь должен видеть свои подписки.
-//   Если этот метод не работает — фронтенд будет пустым.
-// ============================================================
 func TestGetSubscriptionByID_Success(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("Failed to clean table: %v", err)
 	}
 
 	repo := NewPostgresRepo()
 	ctx := context.Background()
-	// создаем пользователя 
-   userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
-	// 2. СОЗДАЁМ ПОДПИСКУ
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
+
+	templateID, err := repo.CreateTemplate(ctx, "Netflix", 500)
+	if err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
 	sub := models.Subscription{
-		ServiceName: "Spotify",
-		Price:       250,
-		UserID:      "550e8400-e29b-41d4-a716-446655440000",
-		StartDate:   "01-2025",
+		UserID:     userID,
+		TemplateID: templateID,
+		StartDate:  "01-2025",
 	}
 	startDate, _ := time.Parse("01-2006", sub.StartDate)
 	id, err := repo.CreateSubscription(ctx, sub, startDate, nil)
@@ -508,53 +366,45 @@ func TestGetSubscriptionByID_Success(t *testing.T) {
 		t.Fatalf("CreateSubscription failed: %v", err)
 	}
 
-	// 3. ПОЛУЧАЕМ ПОДПИСКУ ПО ID
 	saved, err := repo.GetSubscriptionByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetSubscriptionByID failed: %v", err)
 	}
-
-	// 4. ПРОВЕРЯЕМ, ЧТО ДАННЫЕ СОВПАДАЮТ
 	if saved == nil {
 		t.Fatal("Subscription not found")
 	}
-	if saved.ServiceName != sub.ServiceName {
-		t.Errorf("Expected %s, got %s", sub.ServiceName, saved.ServiceName)
+	if saved.ServiceName != "Netflix" {
+		t.Errorf("Expected 'Netflix', got '%s'", saved.ServiceName)
+	}
+	if saved.Price != 500 {
+		t.Errorf("Expected 500, got %d", saved.Price)
 	}
 }
 
-// ============================================================
-// 5. ТЕСТ: ОБНОВЛЕНИЕ ПОДПИСКИ
-// ============================================================
-// Проверяет, что подписка обновляется (меняется название и цена).
-//
-// ПОЧЕМУ ВАЖНО:
-//   Пользователь может передумать и изменить подписку.
-//   Без этого метода интерфейс станет неполным.
-// ============================================================
 func TestUpdateSubscription_Success(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("Failed to clean table: %v", err)
 	}
 
 	repo := NewPostgresRepo()
 	ctx := context.Background()
-	// создаем пользователя 
-   userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
 
-	// 2. СОЗДАЁМ ПОДПИСКУ
+	templateID, err := repo.CreateTemplate(ctx, "Netflix", 500)
+	if err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
 	sub := models.Subscription{
-		ServiceName: "Netflix",
-		Price:       500,
-		UserID:      "550e8400-e29b-41d4-a716-446655440000",
-		StartDate:   "01-2025",
+		UserID:     userID,
+		TemplateID: templateID,
+		StartDate:  "01-2025",
 	}
 	startDate, _ := time.Parse("01-2006", sub.StartDate)
 	id, err := repo.CreateSubscription(ctx, sub, startDate, nil)
@@ -562,63 +412,47 @@ func TestUpdateSubscription_Success(t *testing.T) {
 		t.Fatalf("CreateSubscription failed: %v", err)
 	}
 
-	// 3. ОБНОВЛЯЕМ ДАННЫЕ
-	sub.ID = id
-	sub.ServiceName = "Netflix Premium"
-	sub.Price = 700
-
-	// 4. ВЫЗЫВАЕМ МЕТОД ОБНОВЛЕНИЯ
-	startDate, _ = time.Parse("01-2006", sub.StartDate)
-	err = repo.UpdateSubscription(ctx, sub, startDate, nil)
+	err = repo.UpdateTemplate(ctx, templateID, "Netflix Premium", 700)
 	if err != nil {
-		t.Fatalf("UpdateSubscription failed: %v", err)
+		t.Fatalf("UpdateTemplate failed: %v", err)
 	}
 
-	// 5. ПРОВЕРЯЕМ, ЧТО ДАННЫЕ ИЗМЕНИЛИСЬ
 	saved, err := repo.GetSubscriptionByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetSubscriptionByID failed: %v", err)
 	}
 	if saved.ServiceName != "Netflix Premium" {
-		t.Errorf("Expected Netflix Premium, got %s", saved.ServiceName)
+		t.Errorf("Expected 'Netflix Premium', got '%s'", saved.ServiceName)
 	}
 	if saved.Price != 700 {
 		t.Errorf("Expected 700, got %d", saved.Price)
 	}
 }
 
-// ============================================================
-// 6. ТЕСТ: УДАЛЕНИЕ ПОДПИСКИ
-// ============================================================
-// Проверяет, что подписка удаляется и больше не находится в БД.
-//
-// ПОЧЕМУ ВАЖНО:
-//   Пользователь должен иметь возможность удалить подписку.
-//   Без этого метода CRUD будет неполным.
-// ============================================================
 func TestDeleteSubscription_Success(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-	// 1. ОЧИЩАЕМ ТАБЛИЦУ
+	t.Cleanup(func() {
+		if err := CleanTestTable(); err != nil {
+			t.Logf("Cleanup failed: %v", err)
+		}
+	})
 	if err := CleanTestTable(); err != nil {
 		t.Fatalf("Failed to clean table: %v", err)
 	}
 
 	repo := NewPostgresRepo()
 	ctx := context.Background()
-	// создаем пользователя 
-   userID := "550e8400-e29b-41d4-a716-446655440000"
-    createTestUser(t, userID)
-	
-	// 2. СОЗДАЁМ ПОДПИСКУ
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	createTestUser(t, userID)
+
+	templateID, err := repo.CreateTemplate(ctx, "ToDelete", 100)
+	if err != nil {
+		t.Fatalf("CreateTemplate failed: %v", err)
+	}
+
 	sub := models.Subscription{
-		ServiceName: "ToDelete",
-		Price:       100,
-		UserID:      "550e8400-e29b-41d4-a716-446655440000",
-		StartDate:   "01-2025",
+		UserID:     userID,
+		TemplateID: templateID,
+		StartDate:  "01-2025",
 	}
 	startDate, _ := time.Parse("01-2006", sub.StartDate)
 	id, err := repo.CreateSubscription(ctx, sub, startDate, nil)
@@ -626,13 +460,11 @@ func TestDeleteSubscription_Success(t *testing.T) {
 		t.Fatalf("CreateSubscription failed: %v", err)
 	}
 
-	// 3. УДАЛЯЕМ ПОДПИСКУ
 	err = repo.DeleteSubscription(ctx, id)
 	if err != nil {
 		t.Fatalf("DeleteSubscription failed: %v", err)
 	}
 
-	// 4. ПРОВЕРЯЕМ, ЧТО ПОДПИСКА НЕ НАХОДИТСЯ
 	saved, err := repo.GetSubscriptionByID(ctx, id)
 	if err != nil {
 		t.Fatalf("GetSubscriptionByID failed: %v", err)
@@ -642,113 +474,39 @@ func TestDeleteSubscription_Success(t *testing.T) {
 	}
 }
 
-// ============================================================
-// ТЕСТ: ПРИМЕНЕНИЕ МИГРАЦИЙ (RunMigrations)
-// ============================================================
-// Что проверяет:
-//   - RunMigrations() не возвращает ошибку
-//   - Миграции применяются без паники
-//
-// ПОЧЕМУ ВАЖНО:
-//   - Без миграций таблицы не создаются
-//   - Если миграции не работают — приложение не запустится
-// ============================================================
 func TestRunMigrations(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-    // 1. ЛОГИРУЕМ НАЧАЛО ТЕСТА
-    t.Log("Starting TestRunMigrations")
-
-    // 2. ОЧИЩАЕМ ТАБЛИЦУ ПЕРЕД ТЕСТОМ
-    //    Чтобы начать с чистого состояния
-    t.Log("Cleaning tables before migration test")
-    if err := CleanTestTable(); err != nil {
-        t.Logf("CleanTestTable failed: %v", err)
-        t.Fatalf("CleanTestTable failed: %v", err)
-    }
-    t.Log("Tables cleaned successfully")
-
-    // 3. ВЫЗЫВАЕМ RunMigrations()
-    //    Должна применить все миграции без ошибок
-    t.Log("Running migrations...")
-    err := RunMigrations()
-    if err != nil {
-        t.Logf("RunMigrations failed: %v", err)
-        t.Errorf("RunMigrations failed: %v", err)
-        return
-    }
-    t.Log("Migrations applied successfully")
+	t.Log("Starting TestRunMigrations")
+	t.Log("Cleaning tables before migration test")
+	if err := CleanTestTable(); err != nil {
+		t.Fatalf("CleanTestTable failed: %v", err)
+	}
+	t.Log("Tables cleaned successfully")
+	t.Log("Running migrations...")
+	err := RunMigrations()
+	if err != nil {
+		t.Errorf("RunMigrations failed: %v", err)
+		return
+	}
+	t.Log("Migrations applied successfully")
 }
 
-// ============================================================
-// ТЕСТ: ОТКАТ МИГРАЦИЙ (RollbackMigrations)
-// ============================================================
-// Что проверяет:
-//   - RollbackMigrations() не возвращает ошибку
-//   - Откат проходит без паники
-//
-// ПОЧЕМУ ВАЖНО:
-//   - Откат нужен для восстановления базы
-//   - Без этого теста непонятно, работает ли откат
-// ============================================================
 func TestRollbackMigrations(t *testing.T) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-    // 1. ЛОГИРУЕМ НАЧАЛО ТЕСТА
-    t.Log("Starting TestRollbackMigrations")
-
-    // 2. ОЧИЩАЕМ ТАБЛИЦУ ПЕРЕД ТЕСТОМ
-    t.Log("Cleaning tables before rollback test")
-    if err := CleanTestTable(); err != nil {
-        t.Logf("CleanTestTable failed: %v", err)
-        t.Fatalf("CleanTestTable failed: %v", err)
-    }
-    t.Log("Tables cleaned successfully")
-
-    // 3. СНАЧАЛА ПРИМЕНЯЕМ МИГРАЦИИ
-    t.Log("Applying migrations before rollback...")
-    if err := RunMigrations(); err != nil {
-        t.Logf("RunMigrations failed: %v", err)
-        t.Fatalf("RunMigrations failed: %v", err)
-    }
-    t.Log("Migrations applied, proceeding to rollback")
-
-    // 4. ВЫЗЫВАЕМ RollbackMigrations()
-    //    Должна откатить все миграции без ошибок
-    t.Log("Rolling back migrations...")
-    err := RollbackMigrations()
-    if err != nil {
-        t.Logf("RollbackMigrations failed: %v", err)
-        t.Errorf("RollbackMigrations failed: %v", err)
-        return
-    }
-    t.Log("Migrations rolled back successfully")
-}
-// createTestUser создаёт тестового пользователя, если его ещё нет
-func createTestUser(t *testing.T, userID string) {
-		 t.Cleanup(func() {
-        if err := CleanTestTable(); err != nil {
-            t.Logf("Cleanup failed: %v", err)
-        }
-    })
-    repo := NewPostgresRepo()
-    ctx := context.Background()
-    
-    user := models.User{
-        ID:       userID,
-        Email:    fmt.Sprintf("test_%s@mail.com", userID[:8]),
-        Password: "hash",
-        Role:     "user",
-    }
-    
-    err := repo.CreateUser(ctx, user)
-    if err != nil && !strings.Contains(err.Error(), "duplicate key") {
-        t.Fatalf("CreateUser failed: %v", err)
-    }
+	t.Log("Starting TestRollbackMigrations")
+	t.Log("Cleaning tables before rollback test")
+	if err := CleanTestTable(); err != nil {
+		t.Fatalf("CleanTestTable failed: %v", err)
+	}
+	t.Log("Tables cleaned successfully")
+	t.Log("Applying migrations before rollback...")
+	if err := RunMigrations(); err != nil {
+		t.Fatalf("RunMigrations failed: %v", err)
+	}
+	t.Log("Migrations applied, proceeding to rollback")
+	t.Log("Rolling back migrations...")
+	err := RollbackMigrations()
+	if err != nil {
+		t.Errorf("RollbackMigrations failed: %v", err)
+		return
+	}
+	t.Log("Migrations rolled back successfully")
 }

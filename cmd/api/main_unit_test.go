@@ -1,15 +1,11 @@
 //go:build unit
+
 package main
 
 import (
 	"os"
 	"testing"
 )
-
-
-
-
-
 
 // ============================================================
 // ТЕСТЫ ДЛЯ ЛОГГЕРА
@@ -117,7 +113,3 @@ func TestInitLogger(t *testing.T) {
 
 	t.Log("Logger initialized")
 }
-
-
-
-

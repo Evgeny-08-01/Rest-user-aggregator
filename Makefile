@@ -15,7 +15,7 @@
 #   make docker-logs-server  - View logs from server container only
 #   make clean               - Clean build artifacts (bin/, coverage/, cache)
 #   make help                - Show all available commands
-#   mart stop                - stop local server
+#   make stop                - stop local server
 #
 # Migration commands:
 #   make migrate-up          - Apply all migrations
@@ -30,28 +30,49 @@
 # ============================================================
 BINARY_NAME=subscription_app
 COVERAGE_FILE=coverage.out
+# ============================================================
+# LINT
+# ============================================================
+
+.PHONY: lint
+lint: ## Run golangci-lint
+	@echo "========================================="
+	@echo "  RUNNING LINTER"
+	@echo "========================================="
+	golangci-lint run ./...
+
+.PHONY: lint-fix
+lint-fix: ## Run golangci-lint with auto-fix
+	@echo "========================================="
+	@echo "  RUNNING LINTER WITH AUTO-FIX"
+	@echo "========================================="
+	golangci-lint run --fix ./...
 
 # ============================================================
 # TESTING
 # ============================================================
 
 .PHONY: test-u
-test-u: ## Run unit tests (with mocks, no database)
+test-u: ## Run all unit tests (with mocks, no database)
 	@echo "========================================="
-	@echo "  RUNNING UNIT TESTS (tag: unit)"
+	@echo "  RUNNING ALL UNIT TESTS (tag: unit)"
 	@echo "========================================="
-	go test ./cmd/api -tags=unit -v   #
+	go test -tags=unit -v ./...
 
 .PHONY: test-int
-test-int: ## Run integration tests (with real DB via Docker)
+test-int: ## Run all integration tests (with real DB via Docker)
 	@echo "========================================="
-	@echo "  RUNNING INTEGRATION TESTS (tag: integration)"
+	@echo "  RUNNING ALL INTEGRATION TESTS (tag: integration)"
 	@echo "========================================="
 	go test -tags=integration -p 1 -count=1 ./...
 
 .PHONY: test-all
-test-all: test-u test-int ## Run unit tests first, then integration tests
-
+test-all: ## Run all tests (unit + integration + no tags)
+	@echo "========================================="
+	@echo "  RUNNING ALL TESTS (unit + integration)"
+	@echo "========================================="
+	go test -tags=unit -v ./... && go test -tags=integration -p 1 -count=1 ./... && go test -p 1 -count=1 ./...
+	
 # ============================================================
 # BUILD
 # ============================================================
@@ -74,12 +95,12 @@ docker-up-redis: ## Start Redis only
 .PHONY: run
 run: docker-up-db docker-up-redis ## Start the server locally (DB + Redis via Docker)
 	@echo "[RUN] Starting server locally..."
-	go run cmd/api/main.go
+	go run cmd/api/main.go cmd/api/init.go cmd/api/servers.go cmd/api/helpers.go
 .PHONY: stop
 stop: ## Остановить локальный сервер
-	@echo "  Останавливаю локальный сервер..."
-	-pkill -f "go run cmd/api/main.go" || true
-	@echo "  Сервер остановлен"
+	@echo "Stopping server..."
+	@taskkill /F /IM go.exe 2>nul || true
+	@echo "Server stopped"
 
 # ============================================================
 # DOCKER
@@ -110,22 +131,18 @@ docker-logs-server: ## View logs from server container only
 # ============================================================
 
 .PHONY: migrate-up
-migrate-up: ## Apply all migrations (subscriptions + users)
-	@echo "========================================="
-	@echo "  APPLYING ALL MIGRATIONS"
-	@echo "========================================="
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_subscriptions_table.up.sql
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_users_table.up.sql
-	@echo "✅ Migrations applied."
+migrate-up:
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_users_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000004_create_subscription_templates_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_subscriptions_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000003_create_cache_control_user_table.up.sql
 
 .PHONY: migrate-down
-migrate-down: ## Rollback all migrations (users first, then subscriptions)
-	@echo "========================================="
-	@echo "  ROLLING BACK ALL MIGRATIONS"
-	@echo "========================================="
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_users_table.down.sql
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_subscriptions_table.down.sql
-	@echo "✅ All migrations rolled back."
+migrate-down:
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000004_create_subscription_templates_table.down.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000003_create_cache_control_user_table.down.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_subscriptions_table.down.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_users_table.down.sql
 
 .PHONY: migrate-down-users
 migrate-down-users: ## Rollback only users table
@@ -158,12 +175,27 @@ clean: ## Clean build artifacts (bin/, coverage/, cache)
 	@echo "✅ Cleanup done."
 
 # ============================================================
-# HELP
+# MOBILE
 # ============================================================
 
+ADB = /c/AppData/Local/Android/Sdk/platform-tools/adb.exe
+
+.PHONY: adb-reverse
+adb-reverse: ## Пробросить порт для мобильного приложения (USB)
+	@echo "========================================="
+	@echo "  PROXY PORT FOR MOBILE (adb reverse)"
+	@echo "========================================="
+	"C:/AppData/Local/Android/Sdk/platform-tools/adb.exe" reverse tcp:8087 tcp:8087
+	"C:/AppData/Local/Android/Sdk/platform-tools/adb.exe" reverse tcp:50051 tcp:50051
+	@echo "✅ Ports 8087 and 50051 forwarded to mobile device"
+
+# ============================================================
+# HELP
+# ============================================================
 .PHONY: help
 help: ## Show all available commands
 	@echo "========================================="
 	@echo "  AVAILABLE COMMANDS"
 	@echo "========================================="
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+

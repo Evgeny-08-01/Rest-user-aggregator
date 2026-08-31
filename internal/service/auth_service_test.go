@@ -1,4 +1,5 @@
 //go:build unit
+
 // Сборка только для юнит-тестов (запуск: go test -tags=unit)
 // Юнит-тесты используют моки и не требуют реальной БД
 
@@ -7,9 +8,11 @@ package service
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"Rest-user-agregator/internal/models"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,6 +30,7 @@ import (
 //   - GetUserByEmailCallCount: счётчик вызовов GetUserByEmail
 //   - LastCreatedUser: последний созданный пользователь (для проверки данных)
 //   - LastSearchedEmail: последний email, который искали (для проверки данных)
+//
 // ============================================================
 type MockUserRepository struct {
 	// Хранилище пользователей (ключ — email)
@@ -86,9 +90,9 @@ func (m *MockUserRepository) CreateUser(ctx context.Context, user models.User) e
 
 // GetUserByEmail — ищет пользователя по email в мок-хранилище
 func (m *MockUserRepository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	if ctx.Err() != nil {// Проверяем контекст на отмену операции
-        return nil, ctx.Err()
-    } 
+	if ctx.Err() != nil { // Проверяем контекст на отмену операции
+		return nil, ctx.Err()
+	}
 	// Увеличиваем счётчик вызовов (чтобы в тесте проверить, что метод был вызван)
 	m.GetUserByEmailCallCount++
 	// Сохраняем переданный email для проверки в тесте
@@ -140,8 +144,8 @@ func TestRegister_Success(t *testing.T) {
 
 	// Проверяем, что пользователь реально сохранился в моке
 	user, err := mock.GetUserByEmail(context.Background(), email)
-	assert.NoError(t, err)        // ошибки при получении нет
-	assert.NotNil(t, user)        // пользователь найден
+	assert.NoError(t, err)             // ошибки при получении нет
+	assert.NotNil(t, user)             // пользователь найден
 	assert.Equal(t, email, user.Email) // email совпадает
 }
 
@@ -281,26 +285,28 @@ func TestRegister_ContextCanceled(t *testing.T) {
 
 // TestLogin_Success — проверяет успешный вход
 func TestLogin_Success(t *testing.T) {
+    os.Setenv("JWT_SECRET", "test-secret-key")
+    defer os.Unsetenv("JWT_SECRET")
 	email := "test@mail.com"
 	password := "123456"
-// Хеш пароля "123456" (сгенерируй один раз)
-    hashedPassword := "$2a$10$eDFCq/t577pPq9tdz5BcV.pZ3ozuFBxPYZP21lVLgqqfvn7y5vplu"
+	// Хеш пароля "123456" (сгенерируй один раз)
+	hashedPassword := "$2a$10$eDFCq/t577pPq9tdz5BcV.pZ3ozuFBxPYZP21lVLgqqfvn7y5vplu"
 	mock := NewMockUserRepository()
 	// Добавляем существующего пользователя в мок
 	mock.Users[email] = models.User{
-        Email:    email,
-        Password: hashedPassword,  // ← добавить хеш
-        Role:     "user",
-    }
+		Email:    email,
+		Password: hashedPassword, // ← добавить хеш
+		Role:     "user",
+	}
 
 	svc := NewAuthService(mock)
 
 	// Вызываем Login
 	token, role, err := svc.Login(context.Background(), email, password)
 
-	assert.NoError(t, err)             // ошибки нет
-	assert.NotEmpty(t, token)          // токен сгенерирован
-	assert.Equal(t, "user", role)      // роль совпадает
+	assert.NoError(t, err)                           // ошибки нет
+	assert.NotEmpty(t, token)                        // токен сгенерирован
+	assert.Equal(t, "user", role)                    // роль совпадает
 	assert.Equal(t, 1, mock.GetUserByEmailCallCount) // метод вызван 1 раз
 	assert.Equal(t, email, mock.LastSearchedEmail)   // передан правильный email
 }
