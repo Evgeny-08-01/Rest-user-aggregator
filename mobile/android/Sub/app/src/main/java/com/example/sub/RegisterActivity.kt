@@ -15,7 +15,6 @@ class RegisterActivity : AppCompatActivity() {
 
     private lateinit var etEmail: EditText
     private lateinit var etPassword: EditText
-    private lateinit var etRole: EditText
     private lateinit var btnRegister: Button
     private lateinit var btnToLogin: Button
     private lateinit var tvError: TextView
@@ -28,19 +27,15 @@ class RegisterActivity : AppCompatActivity() {
 
         etEmail = findViewById(R.id.etRegEmail)
         etPassword = findViewById(R.id.etRegPassword)
-        etRole = findViewById(R.id.etRegRole)
         btnRegister = findViewById(R.id.btnRegister)
         btnToLogin = findViewById(R.id.btnToLogin)
         tvError = findViewById(R.id.tvRegError)
 
         // Подсказка для роли
-        etRole.setText("user")
-        etRole.hint = "Роль (user/admin)"
 
         btnRegister.setOnClickListener {
             val email = etEmail.text.toString().trim()
             val password = etPassword.text.toString().trim()
-            val role = etRole.text.toString().trim().ifEmpty { "user" }
 
             if (email.isBlank() || password.isBlank()) {
                 showError("Заполните все поля")
@@ -56,7 +51,7 @@ class RegisterActivity : AppCompatActivity() {
             tvError.visibility = android.view.View.GONE
 
             scope.launch {
-                val success = ApiService.register(this@RegisterActivity, email, password, role)
+               val success = ApiService.register(this@RegisterActivity, email, password)
                 withContext(Dispatchers.Main) {
                     btnRegister.isEnabled = true
                     if (success) {

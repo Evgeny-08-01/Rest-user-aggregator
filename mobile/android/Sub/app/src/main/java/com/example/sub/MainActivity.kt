@@ -41,7 +41,6 @@ class MainActivity : AppCompatActivity() {
         val btnRefresh: Button = findViewById(R.id.btnRefresh)
         btnLogout = findViewById(R.id.btnLogout)
 
-        // Показываем имя пользователя
         val user = getUser(this)
         tvUserName.text = "👤 ${user?.email ?: "Пользователь"}"
 
@@ -57,9 +56,6 @@ class MainActivity : AppCompatActivity() {
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = adapter
 
-        // ============================================================
-        // КНОПКА ДЛЯ АДМИНА (УПРАВЛЕНИЕ ШАБЛОНАМИ)
-        // ============================================================
         val currentUser = getUser(this)
         if (currentUser?.role == "admin") {
             val btnTemplates = Button(this).apply {
@@ -78,19 +74,12 @@ class MainActivity : AppCompatActivity() {
             startActivity(android.content.Intent(this, AddSubscriptionActivity::class.java))
         }
 
+        btnRefresh.setOnClickListener {
+            loadSubscriptions()
+            showToast("Обновлено")
+        }
+
         btnLogout.setOnClickListener {
-        btnRefresh.setOnClickListener {
-            loadSubscriptions()
-            showToast("Обновлено")
-        }
-        btnRefresh.setOnClickListener {
-            loadSubscriptions()
-            showToast("Обновлено")
-        }
-        btnRefresh.setOnClickListener {
-            loadSubscriptions()
-            showToast("Обновлено")
-        }
             TokenManager.saveToken(this, "")
             startActivity(android.content.Intent(this, LoginActivity::class.java))
             finish()
@@ -124,15 +113,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadSubscriptions() {
-        scope.launch {
-            val list = ApiService.getSubscriptions(this@MainActivity)
+    scope.launch {
+        try {
+            val restList = ApiService.getSubscriptions(this@MainActivity)
             withContext(Dispatchers.Main) {
-                adapter.updateData(list)
-                // Не показываем тост, если список пустой — просто обновляем адаптер
+                adapter.updateData(restList)
+                if (restList.isNotEmpty()) {
+                    showToast("✅ REST загрузил ${restList.size} подписок")
+                } else {
+                    showToast("📭 Нет подписок")
+                }
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                showToast("❌ Ошибка загрузки: ${e.message}")
             }
         }
     }
-
+}
     private fun deleteSubscription(id: Int) {
         scope.launch {
             val success = ApiService.deleteSubscription(this@MainActivity, id)

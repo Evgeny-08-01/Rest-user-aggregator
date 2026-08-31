@@ -15,7 +15,7 @@
 #   make docker-logs-server  - View logs from server container only
 #   make clean               - Clean build artifacts (bin/, coverage/, cache)
 #   make help                - Show all available commands
-#   mart stop                - stop local server
+#   make stop                - stop local server
 #
 # Migration commands:
 #   make migrate-up          - Apply all migrations

@@ -20,6 +20,7 @@ package grpcserver
 import (
 	"context"
 
+	"Rest-user-agregator/internal/authentication"
 	"Rest-user-agregator/internal/models"
 	"Rest-user-agregator/internal/service"
 	"Rest-user-agregator/pkg/logger"
@@ -55,8 +56,16 @@ func NewSubscriptionServer(
 
 // getUserIDFromContext — извлекает user_id из контекста (устанавливается interceptor-ом)
 func getUserIDFromContext(ctx context.Context) (string, error) {
-	userID, ok := ctx.Value("user_id").(string)
+	// Добавляем логирование
+	logger.Debug("getUserIDFromContext: checking user_id")
+	
+	userID, ok := ctx.Value(authentication.UserIDKey).(string)
+	// Добавляем логирование
+	logger.Debug("getUserIDFromContext: ok=%v, userID=%s", ok, userID)
+
+	
 	if !ok || userID == "" {
+		logger.Warn("getUserIDFromContext: user not authenticated")
 		return "", status.Error(codes.Unauthenticated, "user not authenticated")
 	}
 	return userID, nil

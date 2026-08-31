@@ -18,6 +18,7 @@ import (
 	"Rest-user-agregator/internal/service"
 	"Rest-user-agregator/pkg/logger"
 	pb "Rest-user-agregator/proto/subscription"
+    "Rest-user-agregator/internal/authentication"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	httpSwagger "github.com/swaggo/http-swagger"
@@ -223,11 +224,14 @@ func createGRPCServer(svc *service.SubscriptionService, templateSvc *service.Tem
 	// 2. СОЗДАНИЕ gRPC-ОБРАБОТЧИКА
 	grpcHandler := grpcserver.NewSubscriptionServer(svc, templateSvc)
 
-	// 3. СОЗДАНИЕ gRPC-СЕРВЕРА
-	grpcServer := grpc.NewServer()
+	// 3. СОЗДАНИЕ gRPC-СЕРВЕРА...с аунтификацией
+	grpcServer := grpc.NewServer(
+        grpc.UnaryInterceptor(authentication.AuthInterceptor), 
+    )
 
 	// 4. РЕГИСТРАЦИЯ СЕРВИСА
 	pb.RegisterSubscriptionServiceServer(grpcServer, grpcHandler)
+
 	if os.Getenv("ENV") != "production" {
 		reflection.Register(grpcServer)
 	}

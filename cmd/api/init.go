@@ -20,6 +20,13 @@ func loadEnv() {
 	} else {
 		log.Println("[INFO] .env file loaded successfully")
 		log.Printf("[INFO] DB_PATH from .env: %s", os.Getenv("DB_PATH"))
+
+		jwtSecret := os.Getenv("JWT_SECRET")
+		if jwtSecret == "" {
+			log.Println("[WARN] JWT_SECRET not set in .env file")
+		} else {
+			log.Printf("[INFO] JWT_SECRET loaded (length: %d)", len(jwtSecret))
+		}
 	}
 }
 

@@ -8,6 +8,7 @@ package service
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"Rest-user-agregator/internal/models"
@@ -284,6 +285,8 @@ func TestRegister_ContextCanceled(t *testing.T) {
 
 // TestLogin_Success — проверяет успешный вход
 func TestLogin_Success(t *testing.T) {
+    os.Setenv("JWT_SECRET", "test-secret-key")
+    defer os.Unsetenv("JWT_SECRET")
 	email := "test@mail.com"
 	password := "123456"
 	// Хеш пароля "123456" (сгенерируй один раз)

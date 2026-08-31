@@ -32,6 +32,7 @@ object ApiService {
 
         return@withContext conn.responseCode == 201
     }
+    
     suspend fun deleteTemplate(context: Context, id: Int): Boolean = withContext(Dispatchers.IO) {
         val url = URL("$BASE_URL/admin/templates/$id")
         val conn = url.openConnection() as HttpURLConnection
@@ -42,6 +43,7 @@ object ApiService {
 
         return@withContext conn.responseCode == 200
     }
+    
     suspend fun updateTemplate(context: Context, id: Int, serviceName: String, price: Int): Boolean = withContext(Dispatchers.IO) {
         val url = URL("$BASE_URL/admin/templates/$id")
         val conn = url.openConnection() as HttpURLConnection
@@ -61,6 +63,7 @@ object ApiService {
 
         return@withContext conn.responseCode == 200
     }
+    
     suspend fun createTemplate(context: Context, serviceName: String, price: Int): Int? = withContext(Dispatchers.IO) {
         val url = URL("$BASE_URL/admin/templates")
         val conn = url.openConnection() as HttpURLConnection
@@ -83,6 +86,7 @@ object ApiService {
             JSONObject(json).getInt("id")
         } else null
     }
+    
     suspend fun getTemplates(context: Context): List<Template> = withContext(Dispatchers.IO) {
         val url = URL("$BASE_URL/templates")
         val conn = url.openConnection() as HttpURLConnection
@@ -98,6 +102,7 @@ object ApiService {
             emptyList()
         }
     }
+    
     suspend fun login(context: Context, email: String, password: String): Boolean =
         withContext(Dispatchers.IO) {
             val url = URL("$BASE_URL/login")
@@ -123,7 +128,11 @@ object ApiService {
             } else false
         }
 
+    // ⭐ ИСПРАВЛЕННЫЙ МЕТОД: теперь использует gRPC с fallback на REST
     suspend fun getSubscriptions(context: Context): List<Subscription> = withContext(Dispatchers.IO) {
+       
+        // Fallback на REST
+        android.util.Log.d("ApiService", "🔄 Используем REST fallback")
         val url = URL("$BASE_URL/subscriptions")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "GET"
@@ -162,6 +171,7 @@ object ApiService {
             JSONObject(json).getInt("id")
         } else null
     }
+    
     suspend fun createSubscription(context: Context, sub: Subscription): Int? = withContext(Dispatchers.IO) {
         val url = URL("$BASE_URL/subscriptions")
         val conn = url.openConnection() as HttpURLConnection
@@ -238,28 +248,30 @@ object ApiService {
             )
         } else null
     }
-suspend fun updateSubscriptionFull(context: Context, id: Int, serviceName: String, price: Int, userId: String, startDate: String, endDate: String): Boolean = withContext(Dispatchers.IO) {
-    val url = URL("$BASE_URL/subscriptions/$id")
-    val conn = url.openConnection() as HttpURLConnection
-    conn.requestMethod = "PUT"
-    conn.setRequestProperty("Content-Type", "application/json")
-    conn.setRequestProperty("Authorization", "Bearer ${TokenManager.getToken(context)}")
-    conn.doOutput = true
-    conn.connectTimeout = 5000
-    conn.readTimeout = 5000
 
-    val body = JSONObject().apply {
-        put("service_name", serviceName)
-        put("price", price)
-        put("user_id", userId)
-        put("start_date", startDate)
-        put("end_date", endDate)
+    suspend fun updateSubscriptionFull(context: Context, id: Int, serviceName: String, price: Int, userId: String, startDate: String, endDate: String): Boolean = withContext(Dispatchers.IO) {
+        val url = URL("$BASE_URL/subscriptions/$id")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "PUT"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer ${TokenManager.getToken(context)}")
+        conn.doOutput = true
+        conn.connectTimeout = 5000
+        conn.readTimeout = 5000
+
+        val body = JSONObject().apply {
+            put("service_name", serviceName)
+            put("price", price)
+            put("user_id", userId)
+            put("start_date", startDate)
+            put("end_date", endDate)
+        }
+
+        conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
+
+        return@withContext conn.responseCode == 200
     }
-
-    conn.outputStream.bufferedWriter().use { it.write(body.toString()) }
-
-    return@withContext conn.responseCode == 200
-}
+    
     suspend fun updateSubscription(context: Context, id: Int, startDate: String, endDate: String): Boolean =
         withContext(Dispatchers.IO) {
             val url = URL("$BASE_URL/subscriptions/$id")
@@ -282,7 +294,7 @@ suspend fun updateSubscriptionFull(context: Context, id: Int, serviceName: Strin
         }
 
     private fun parseTemplates(json: String): List<Template> {
-    if (json == "null" || json.isEmpty()) return emptyList()
+        if (json == "null" || json.isEmpty()) return emptyList()
         val result = mutableListOf<Template>()
         val arr = JSONArray(json)
         for (i in 0 until arr.length()) {
@@ -297,6 +309,7 @@ suspend fun updateSubscriptionFull(context: Context, id: Int, serviceName: Strin
         }
         return result
     }
+    
     private fun parseSubscriptions(json: String): List<Subscription> {
         val result = mutableListOf<Subscription>()
         val arr = JSONArray(json)

@@ -2,6 +2,7 @@
 package authentication
 
 import (
+	"Rest-user-agregator/pkg/logger"
 	"errors"
 	"os"
 	"time"
@@ -103,7 +104,13 @@ func GenerateToken(userID, email, role string) (string, error) {
 // ============================================================
 func ValidateToken(tokenString string) (*Claims, error) {
 	// 1. Получаем секрет из переменной окружения
+	logger.Debug("ValidateToken: START checking token")
 	secret := os.Getenv("JWT_SECRET")
+	logger.Debug("ValidateToken: secret length = %d", len(secret))
+	if secret == "" {
+		logger.Warn("ValidateToken: JWT_SECRET is not set")
+		return nil, errors.New("JWT_SECRET is not set")
+	}
 	if secret == "" {
 		return nil, errors.New("JWT_SECRET is not set")
 	}

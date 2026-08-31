@@ -11,6 +11,7 @@ import (
 	"Rest-user-agregator/internal/repository"
 	"Rest-user-agregator/internal/service"
 	pb "Rest-user-agregator/proto/subscription"
+	"Rest-user-agregator/internal/authentication"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -101,8 +102,8 @@ func TestGetSubscription(t *testing.T) {
 	templateSvc := service.NewTemplateService(templateRepo)
 	server := NewSubscriptionServer(svc, templateSvc)
 
-	ctx := context.WithValue(context.Background(), "user_id", "test-user")
-	ctx = context.WithValue(ctx, "role", "user")
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.GetRequest{Id: 1}
 	resp, err := server.GetSubscription(ctx, req)
@@ -127,8 +128,8 @@ func TestGetSubscriptions(t *testing.T) {
 	svc := service.NewSubscriptionService(repo, templateRepo)
 	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
 	server := NewSubscriptionServer(svc, templateSvc)
-	ctx := context.WithValue(context.Background(), "user_id", "test-user")
-	ctx = context.WithValue(ctx, "role", "user")
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.GetSubscriptionsRequest{Limit: 10, Offset: 0}
 	resp, err := server.GetSubscriptions(ctx, req)
@@ -157,8 +158,8 @@ func TestCreateSubscription(t *testing.T) {
 		StartDate:  "01-2029",
 		EndDate:    "12-2029",
 	}
-	ctx := context.WithValue(context.Background(), "user_id", "test-user")
-	ctx = context.WithValue(ctx, "role", "user")
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	resp, err := server.CreateSubscription(ctx, req)
 
@@ -195,8 +196,8 @@ func TestUpdateSubscription(t *testing.T) {
 		StartDate:  "01-2029",
 		EndDate:    "12-2029",
 	}
-	ctx := context.WithValue(context.Background(), "user_id", "test-user")
-	ctx = context.WithValue(ctx, "role", "user")
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	resp, err := server.UpdateSubscription(ctx, req)
 
@@ -222,8 +223,8 @@ func TestDeleteSubscription(t *testing.T) {
 	svc := service.NewSubscriptionService(repo, templateRepo)
 	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
 	server := NewSubscriptionServer(svc, templateSvc)
-	ctx := context.WithValue(context.Background(), "user_id", "test-user")
-	ctx = context.WithValue(ctx, "role", "user")
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.GetRequest{Id: 1}
 	resp, err := server.DeleteSubscription(ctx, req)
@@ -243,8 +244,8 @@ func TestGetTotalCost(t *testing.T) {
 	svc := service.NewSubscriptionService(repo, templateRepo)
 	templateSvc := service.NewTemplateService(templateRepo) // ← добавить
 	server := NewSubscriptionServer(svc, templateSvc)
-	ctx := context.WithValue(context.Background(), "user_id", "test-user")
-	ctx = context.WithValue(ctx, "role", "user")
+    ctx := context.WithValue(context.Background(), authentication.UserIDKey, "test-user")
+    ctx = context.WithValue(ctx, authentication.RoleKey, "user")
 
 	req := &pb.TotalCostRequest{
 		UserId:      "test-user",
