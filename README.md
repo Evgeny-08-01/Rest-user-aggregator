@@ -71,7 +71,7 @@ REST API сервис для агрегации данных онлайн под
   - Автоматическая публикация Docker-образа в Docker Hub
 - **Docker + Docker Compose** (контейнеризация)
 
-## Логирование
+### Логирование
 
 Поддерживаются уровни логирования:
 - `DEBUG` — для отладки (не используется в продакшене)
@@ -82,7 +82,7 @@ REST API сервис для агрегации данных онлайн под
 
 Уровень задаётся переменной `LOG_LEVEL` в `.env`
 
-## Graceful Shutdown
+### Graceful Shutdown
 
 При получении сигналов SIGINT (Ctrl+C) или SIGTERM сервер:
 1. Перестаёт принимать новые соединения
@@ -93,7 +93,7 @@ REST API сервис для агрегации данных онлайн под
    - Код 1 — если произошла ошибка при старте или остановке.
 
 
-## Запуск
+### Запуск
 
 ### Через Docker Compose (рекомендуется)
 
@@ -161,22 +161,22 @@ make run
 
 ---
 
-## 🚀 Быстрый старт
+### 🚀 Быстрый старт
 
 
-# 1. Клонировать репозиторий
+#### 1. Клонировать репозиторий
 git clone https://github.com/Evgeny-08-01/Rest-user-agregator.git
 
-# 2. Запустить сервер (БД и Redis поднимутся автоматически)
+#### 2. Запустить сервер (БД и Redis поднимутся автоматически)
 make run
 
-# 3. Проверить работу
+#### 3. Проверить работу
 curl http://localhost:8087/health
 ```
  {"status":"ok"}
 ```
 
-# 4. Остановить сервер
+#### 4. Остановить сервер
 make stop
 
 Сервер будет доступен по адресу: http://localhost:8087
@@ -214,7 +214,7 @@ docker-compose up -d db redis
 go run cmd/api/main.go cmd/api/init.go cmd/api/servers.go cmd/api/helpers.go
 ```
 
-## 🌐 API Endpoints
+### 🌐 API Endpoints
 
 ### REST API
 
@@ -349,11 +349,11 @@ curl -X GET "http://localhost:8087/api/subscriptions/total-cost?start_date=08-20
 Заголовок:
 Authorization: Bearer <jwt_token>
 #### Эндпоинты шаблонов
-Метод	Эндпоинт	Описание
-GET	/api/templates	Получить список всех шаблонов
-POST	/api/admin/templates	Создать шаблон
-PUT	/api/admin/templates/{id}	Обновить шаблон
-DELETE	/api/admin/templates/{id}	Удалить шаблон
+Метод	    Эндпоинт	                    Описание
+GET	      /api/templates	              Получить список всех шаблонов
+POST	    /api/admin/templates	        Создать шаблон
+PUT	      /api/admin/templates/{id}	    Обновить шаблон
+DELETE	  /api/admin/templates/{id}	    Удалить шаблон
 Получить список всех шаблонов
 ```
 curl -X GET http://localhost:8087/api/templates \
@@ -464,7 +464,6 @@ adb reverse tcp:8087 tcp:8087
 
 - **Разработка:** разрешён `http://localhost:8087` (порт из `SERVER_PORT`)
 - **Продакшен:** если фронтенд и бэкенд на одном домене — CORS не требуется.  
-  При разделении — добавить `FRONTEND_URL` в `.env`.
 
 ---
 
@@ -483,7 +482,9 @@ adb reverse tcp:8087 tcp:8087
 
 GET /health
 Ответ:
+```
 {"status":"ok"}
+```
 📝 Примеры запросов
 1. Создание подписки
 POST /api/subscriptions
