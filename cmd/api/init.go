@@ -139,8 +139,8 @@ func initRedis() error {
 func initDB() error {
 	databasePath := os.Getenv("DB_PATH") // Получаем путь к БД ИЗ .env
 	if databasePath == "" {
-		databasePath = "postgres://postgres:mysecret@db:5432/subscriptions?sslmode=disable" // если не получили, то ставим default
-		logger.Warn("DB_PATH not set, using default")
+		logger.Warn("DB_PATH not set")
+		return fmt.Errorf("DB_PATH environment variable is required")
 	}
 	// 2. Если мы внутри Docker (ENV=docker), используем `db`
 	// Если локально — оставляем как есть (уже localhost)

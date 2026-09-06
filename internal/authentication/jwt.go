@@ -111,9 +111,7 @@ func ValidateToken(tokenString string) (*Claims, error) {
 		logger.Warn("ValidateToken: JWT_SECRET is not set")
 		return nil, errors.New("JWT_SECRET is not set")
 	}
-	if secret == "" {
-		return nil, errors.New("JWT_SECRET is not set")
-	}
+	
 
 	// 2. Парсим и проверяем токен
 	claims := &Claims{}

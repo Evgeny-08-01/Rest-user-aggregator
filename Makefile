@@ -133,12 +133,12 @@ docker-logs-server: ## View logs from server container only
 .PHONY: migrate-up
 migrate-up:
 	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000001_create_users_table.up.sql
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000004_create_subscription_templates_table.up.sql
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_subscriptions_table.up.sql
-	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000003_create_cache_control_user_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_subscription_templates_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000003_create_subscriptions_table.up.sql
+	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000004_create_cache_control_user_table.up.sql
 
 .PHONY: migrate-down
-migrate-down:
+migrate-down: backup
 	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000004_create_subscription_templates_table.down.sql
 	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000003_create_cache_control_user_table.down.sql
 	docker exec -i subscription-db psql -U postgres -d subscriptions < migrations/000002_create_subscriptions_table.down.sql
@@ -177,7 +177,6 @@ clean: ## Clean build artifacts (bin/, coverage/, cache)
 # ============================================================
 # MOBILE
 # ============================================================
-
 ADB = /c/AppData/Local/Android/Sdk/platform-tools/adb.exe
 
 .PHONY: adb-reverse
@@ -188,6 +187,28 @@ adb-reverse: ## Пробросить порт для мобильного при
 	"C:/AppData/Local/Android/Sdk/platform-tools/adb.exe" reverse tcp:8087 tcp:8087
 	"C:/AppData/Local/Android/Sdk/platform-tools/adb.exe" reverse tcp:50051 tcp:50051
 	@echo "✅ Ports 8087 and 50051 forwarded to mobile device"
+# ============================================================
+# BACKUP
+# ============================================================		
+.PHONY: backup
+backup: ## Create a backup before rollback (with confirmation)
+	@read -p "⚠️  Create a backup before rollback? (y/N): " confirm; \
+	if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
+		echo "❌ Canceled."; exit 1; \
+	fi; \
+	go run cmd/backup/main.go
+# ============================================================
+# RESTORE from backup
+# ============================================================	
+.PHONY: restore
+restore: ## Restore database from a backup (manual confirmation)
+	@echo "⚠️  WARNING! This will overwrite ALL data in the database!"
+	@echo "📁 Available backups:"
+	@ls -la ./backups/*.sql.gz 2>/dev/null || echo "❌ No backups found in ./backups/"
+	@read -p "Enter filename (e.g., 20260306_153045.123.sql.gz): " FILE; \
+	if [ -z "$$FILE" ]; then echo "❌ No file specified"; exit 1; fi; \
+	gunzip -c ./backups/$$FILE | docker exec -i subscription-db psql -U postgres -d subscriptions
+	@echo "✅ Database restored from $$FILE"
 
 # ============================================================
 # HELP

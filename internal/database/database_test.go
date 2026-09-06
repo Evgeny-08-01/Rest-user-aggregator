@@ -18,8 +18,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if err := godotenv.Load("../../.env.test"); err != nil {
-		logger.Warn(".env.test not found, using env vars")
+	if err := godotenv.Load("../../.env"); err != nil {
+		logger.Warn(".env not found, using env vars")
 	}
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {

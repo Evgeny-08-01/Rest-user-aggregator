@@ -26,28 +26,34 @@ import (
 //
 // ============================================================
 func RunMigrations() error {
-	// 1. Находим все .up.sql файлы в папке migrations/
+	// ✅ 1. СОЗДАЁМ БЭКАП ПЕРЕД МИГРАЦИЕЙ
+	if backupPath, err := BackupDB(); err != nil {
+		logger.Warn("Backup skipped: %v", err)
+	} else {
+		logger.Info("Backup created: %s", backupPath)
+	}
+	// 2. Находим все .up.sql файлы в папке migrations/
 	files, err := filepath.Glob("migrations/*.up.sql")
 	if err != nil {
 		logger.Error("RunMigrations: failed to list migration files: %v", err)
 		return err
 	}
 
-	// 2. Если файлов нет — выходим (не ошибка, просто нет миграций)
+	// 3. Если файлов нет — выходим (не ошибка, просто нет миграций)
 	if len(files) == 0 {
 		logger.Warn("RunMigrations: no migration files found")
 		return nil
 	}
 
-	// 3. Сортируем файлы по имени (по алфавиту)
+	// 4. Сортируем файлы по имени (по алфавиту)
 	//    Это гарантирует, что 000001 выполнится раньше 000002
 	//    Без сортировки порядок может быть случайным
 	sort.Strings(files)
 
-	// 4. Логируем, сколько файлов найдено
+	// 5. Логируем, сколько файлов найдено
 	logger.Info("RunMigrations: found %d migration files", len(files))
 
-	// 5. Выполняем каждый файл по очереди
+	// 6. Выполняем каждый файл по очереди
 	for _, file := range files {
 		// 5.1 Читаем SQL-код из файла
 		sql, err := os.ReadFile(file)
@@ -56,7 +62,7 @@ func RunMigrations() error {
 			return err
 		}
 
-		// 5.2 Выполняем SQL
+		// 6.2 Выполняем SQL
 		if _, err := db.Exec(string(sql)); err != nil {
 			// Если таблица уже существует — пропускаем (это не ошибка)
 			if strings.Contains(err.Error(), "already exists") {
@@ -67,7 +73,7 @@ func RunMigrations() error {
 			return err
 		}
 
-		// 5.3 Логируем успешное выполнение
+		// 6.3 Логируем успешное выполнение
 		logger.Info("RunMigrations: applied %s", file)
 	}
 
@@ -90,6 +96,12 @@ func RunMigrations() error {
 //
 // ============================================================
 func RollbackMigrations() error {
+	// ✅ Бэкап перед откатом
+    if _, err := BackupDB(); err != nil {
+        logger.Warn("Backup skipped before rollback: %v", err)
+    } else {
+        logger.Info("Backup created before rollback")
+    }
 	// 1. Находим все .down.sql файлы
 	files, err := filepath.Glob("migrations/*.down.sql")
 	if err != nil {

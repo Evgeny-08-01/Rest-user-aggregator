@@ -27,16 +27,17 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if err := godotenv.Load("../../../.env.test"); err != nil {
-		log.Println("WARNING: .env.test not found, using env vars")
+	if err := godotenv.Load("../../../.env"); err != nil {
+		logger.Warn(".env not found, using env vars")
 	}
-	log.Println("LOG_LEVEL from env.test:", os.Getenv("LOG_LEVEL"))
+	log.Println("LOG_LEVEL from env:", os.Getenv("LOG_LEVEL"))
 	logger.Init(os.Getenv("LOG_PATH"), os.Getenv("LOG_LEVEL"))
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		dbPath = "postgres://postgres:mysecret@localhost:5432/subscriptions?sslmode=disable"
-		log.Println("WARNING: DB_PATH not set, using default")
+if dbPath == "" {
+    logger.Warn("DB_PATH not set, using default")
+    panic("DB_PATH environment variable is required for integration tests")
 	} else {
 		log.Println("INFO: Using DB_PATH from .env")
 	}

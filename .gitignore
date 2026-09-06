@@ -59,3 +59,5 @@ gen_hash.go
 subscription_app
 coverage.out
 coverage_full.out
+# Бэкап
+./backups/
