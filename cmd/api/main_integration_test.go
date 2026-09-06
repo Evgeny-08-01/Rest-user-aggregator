@@ -29,8 +29,8 @@ func Test0Dependencies(t *testing.T) {
 }
 func TestMain(m *testing.M) {
 	// ✅ Загружаем .env.test для тестов
-	if err := godotenv.Load("../../.env.test"); err != nil {
-		logger.Warn("[WARN] .env.test not found, using default values")
+	if err := godotenv.Load("../../.env"); err != nil {
+		logger.Warn("[WARN] .env not found, using default values")
 	}
 	// ✅ ИНИЦИАЛИЗАЦИЯ REDIS для тестирования
 	if err := initRedis(); err != nil {

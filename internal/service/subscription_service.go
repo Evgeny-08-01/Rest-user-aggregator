@@ -466,10 +466,3 @@ func canChangeStartDate(startDate time.Time) bool {
 	current := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	return start.After(current) || start.Equal(current)
 }
-
-/*func canChangeStartDate(startDate time.Time) bool {
-	now := time.Now().In(time.Local)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-	start := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.Local)
-	return start.After(today)
-}*/
