@@ -35,7 +35,6 @@ func TestMain(m *testing.M) {
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-if dbPath == "" {
     logger.Warn("DB_PATH not set, using default")
     panic("DB_PATH environment variable is required for integration tests")
 	} else {
